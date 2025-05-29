@@ -1,0 +1,11 @@
+Development Goals:
+
+High Level Goals:
+
+- Create an application, Rasterizer, which allows users to manipulate pixels on a canvas using various tools.
+- Follow a highly portable design pattern in which core application logic is completely platform agnostic, and simple platform specific "glue" layers handle interfacing between the host and core program logic.
+- Learn about CPU based rasterization.
+
+Low Level Goals:
+
+- Complete JS prototype.

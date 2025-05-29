@@ -1,35 +1,43 @@
 <!DOCTYPE html>
 
 <html>
+
+<head>
     <style>
         * {
-            background-color:#000000;
-            margin:0;
-            overflow:hidden;
-            padding:0;
+            background-color: #000000;
+            margin: 0;
+            overflow: hidden;
+            padding: 0;
         }
 
         body {
-            align-content:center;
-            display:grid;
-            height:100%;
-            justify-content:center;
-            width:100%;
+            align-content: center;
+            display: grid;
+            height: 100%;
+            justify-content: center;
+            width: 100%;
         }
 
         canvas {
             image-rendering: pixelated;
         }
 
-        html { height:100%; width:100%; }
-
+        html {
+            height: 100%;
+            width: 100%;
+        }
     </style>
-    <body>
-        <script src="bitwise.js"></script>
-        <script src="controller.js"></script>
-        <script src="geometry.js"></script>
-        <script src="rasterizer.js"></script>
-        <script src="raster-editor.js"></script>
-        <script src="initialize-browser.js"></script>
-    </body>
+    <title>Rasterizer</title>
+</head>
+
+<body>
+    <script src="library/bit-math.js"></script>
+    <script src="library/geometry.js"></script>
+    <script src="library/input.js"></script>
+    <script src="library/raster.js"></script>
+    <script src="rasterizer.js"></script>
+    <script src="platform/browser-interface.js"></script>
+</body>
+
 </html>
