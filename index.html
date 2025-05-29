@@ -3,6 +3,7 @@
 <html>
 
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         * {
             background-color: #000000;
@@ -11,21 +12,14 @@
             padding: 0;
         }
 
-        body {
-            align-content: center;
-            display: grid;
+        body, html {
             height: 100%;
-            justify-content: center;
             width: 100%;
         }
 
         canvas {
             image-rendering: pixelated;
-        }
-
-        html {
-            height: 100%;
-            width: 100%;
+            position:fixed;
         }
     </style>
     <title>Rasterizer</title>

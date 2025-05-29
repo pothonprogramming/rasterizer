@@ -67,24 +67,31 @@ const Raster = {
         }
     },
 
+    // The idea is to duplicate each pixel in the sourcePixels array by a factor of scale in 2 dimensions.
+    // So if scale = 2, 1 pixel will turn into 4 pixels, filling 2 columns on the x axis and 2 rows on the y axis.
+    //
+    // Example: scale = 2
+    // 
+    // [0, 1
+    //  2, 3] source array
+    //
+    // [0, 0, 1, 1,
+    //  0, 0, 1, 1,
+    //  2, 2, 3, 3,
+    //  2, 2, 3, 3] target array
+    //
+    // To do this, loop over each row *scale* number of times and copy each pixel in the row *scale* number of times to the target array.
     copyPixelsScaled(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY, scale) {
-        const bottom = targetY + sourceHeight * scale;
-        const right = targetX + sourceWidth * scale;
-
-        let sourceIndex = 0;
-        for (let sourceY = 0; sourceY < sourceHeight; sourceY++) {
-            for (let sourceX = 0; sourceX < sourceWidth; sourceX++) {
-                const value = sourcePixels[sourceIndex];
-                sourceIndex++;
-
-                const startX = sourceX * scale;
-                const startY = sourceY * scale;
-
-                for (let tY = 0; ty < scale; ty++) {
-                    const targetRow = (startY + ty) * targetWidth;
-                    for (let tX = 0; tx < scale; tx++) {
-                        targetPixels[targetRow + startX + sX] = value;
-                    }
+        for (let sourcePixelY = 0; sourcePixelY < sourceHeight; sourcePixelY++) {
+            const scaledY = sourcePixelY * scale + targetY;
+            const sourceRowOffset = sourcePixelY * sourceWidth;
+            for (let rowOffset = 0; rowOffset < scale; rowOffset++) {
+                const targetRowOffset = (scaledY + rowOffset) * targetWidth;
+                for (let sourcePixelX = 0; sourcePixelX < sourceWidth; sourcePixelX++) {
+                    const targetIndex = targetRowOffset + sourcePixelX * scale + targetX;
+                    const sourcePixelValue = sourcePixels[sourceRowOffset + sourcePixelX];
+                    for (let columnOffset = 0; columnOffset < scale; columnOffset++)
+                        targetPixels[targetIndex + columnOffset] = sourcePixelValue;
                 }
             }
         }

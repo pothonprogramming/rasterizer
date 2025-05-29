@@ -1,11 +1,7 @@
 (() => {
-
-    const MAX_RASTER_WIDTH = Rasterizer.getMaxRasterWidth();
-    const MAX_RASTER_HEIGHT = Rasterizer.getMaxRasterHeight();
-
     function handleMouseDown(event) {
         const canvasRectangle = canvas.getBoundingClientRect();
-        Rasterizer.updateMousePosition(event.clientX - canvasRectangle.left, event.clientY - canvasRectangle.top);
+        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
 
         switch (event.button) {
             case 0:
@@ -21,12 +17,12 @@
 
     function handleMouseMove(event) {
         const canvasRectangle = canvas.getBoundingClientRect();
-        Rasterizer.updateMousePosition(event.clientX - canvasRectangle.left, event.clientY - canvasRectangle.top);
+        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
     }
 
     function handleMouseUp(event) {
         const canvasRectangle = canvas.getBoundingClientRect();
-        Rasterizer.updateMousePosition(event.clientX - canvasRectangle.left, event.clientY - canvasRectangle.top);
+        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
         if (event.button === 2) animate = false;
         switch (event.button) {
             case 2:
@@ -36,38 +32,48 @@
     }
 
     function handleResize(event) {
-        let width = event.target.innerWidth;
-        let height = event.target.innerHeight;
+        const windowInnerWidth = event.target.innerWidth;
+        const windowInnerHeight = event.target.innerHeight;
+        const displayRasterWidth = Rasterizer.getDisplayRasterWidth();
+        const displayRasterHeight = Rasterizer.getDisplayRasterHeight();
 
-        if (width > MAX_RASTER_WIDTH) width = MAX_RASTER_WIDTH;
-        if (height > MAX_RASTER_HEIGHT) height = MAX_RASTER_HEIGHT; 
+        // The canvas must never exceed the size of the window or the size of the display raster.
+        const canvasWidth = windowInnerWidth < displayRasterWidth ? windowInnerWidth : displayRasterWidth;
+        const canvasHeight = windowInnerHeight < displayRasterHeight ? windowInnerHeight : displayRasterHeight;
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
         canvasContext2D.imageSmoothingEnabled = false;
 
-        Rasterizer.resizeDisplayRaster(width, height);
+        canvas.style.left = Math.floor((windowInnerWidth - canvasWidth) * 0.5) + "px";
+        canvas.style.top = Math.floor((windowInnerHeight - canvasHeight) * 0.5) + "px";
 
         Rasterizer.render();
 
-        displayView = new Uint8ClampedArray(Rasterizer.getDisplayBuffer().buffer, 0, Rasterizer.getDisplayBufferLength() * 4);
-        imageData = new ImageData(displayView, Rasterizer.getDisplayBufferWidth(), Rasterizer.getDisplayBufferHeight());
+        resetImageData();
 
         render();
+    }
+
+    function resetImageData() {
+        displayView = new Uint8ClampedArray(Rasterizer.getDisplayRasterPixels().buffer, 0, Rasterizer.getDisplayRasterPixelCount() * 4);
+        imageData = new ImageData(displayView, Rasterizer.getDisplayRasterWidth(), Rasterizer.getDisplayRasterHeight());
     }
 
     function render() {
         canvasContext2D.putImageData(imageData, 0, 0);
     }
 
-    Rasterizer.initialize(window.innerWidth, window.innerHeight, 32, 32, 100, 100);
+    Rasterizer.initialize(100, 100, 10, 10, 2, 2);
 
     const canvas = document.createElement("canvas");
     const canvasContext2D = canvas.getContext("2d");
     canvasContext2D.imageSmoothingEnabled = false;
 
-    let displayView = new Uint8ClampedArray(Rasterizer.getDisplayBuffer().buffer, 0, Rasterizer.getDisplayBufferLength() * 4);
-    let imageData = new ImageData(displayView, Rasterizer.getDisplayBufferWidth(), Rasterizer.getDisplayBufferHeight());
+    let displayView;
+    let imageData;
+
+    resetImageData();
 
     document.body.appendChild(canvas);
     document.addEventListener("contextmenu", function (event) { event.preventDefault(); });

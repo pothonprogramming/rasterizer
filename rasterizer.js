@@ -9,6 +9,7 @@ const Rasterizer = (() => {
 
     let canvasRaster; // Represents the editable image.
     let canvasPosition = Geometry.createPoint2D(32, 32);
+    let canvasScale = 10;
     let displayRaster; // Represents everything that will be rendered.
     let toolbarRaster; // Represents the toolbar.
     let toolbarPosition = Geometry.createPoint2D(32, 16);
@@ -22,12 +23,10 @@ const Rasterizer = (() => {
     }
 
     return {
-        getMaxRasterWidth() { return MAX_RASTER_WIDTH; },
-        getMaxRasterHeight() { return MAX_RASTER_HEIGHT; },
-        getDisplayBuffer() { return displayRaster.pixels; },
-        getDisplayBufferLength() { return displayRaster.pixelCount; },
-        getDisplayBufferWidth() { return displayRaster.width; },
-        getDisplayBufferHeight() { return displayRaster.height; },
+        getDisplayRasterPixels() { return displayRaster.pixels; },
+        getDisplayRasterPixelCount() { return displayRaster.pixelCount; },
+        getDisplayRasterWidth() { return displayRaster.width; },
+        getDisplayRasterHeight() { return displayRaster.height; },
         initialize(displayWidth, displayHeight, canvasX, canvasY, canvasWidth, canvasHeight) {
             canvasRaster = Raster.createRaster(new Uint32Array(MAX_RASTER_WIDTH * MAX_RASTER_HEIGHT), 0, 0);
             resizeRaster(canvasRaster, canvasWidth, canvasHeight);
@@ -39,12 +38,13 @@ const Rasterizer = (() => {
 
         },
         plotPoint() {
-            console.log(mouseInput.x - canvasPosition.x, mouseInput.y - canvasPosition.y);
-            Raster.fillPointClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, Math.floor(mouseInput.x - canvasPosition.x), Math.floor(mouseInput.y - canvasPosition.y), 0xffffffff);  
+            console.log(BitMath.floor((mouseInput.x - canvasPosition.x) / canvasScale), BitMath.floor((mouseInput.y - canvasPosition.y) / canvasScale));
+            Raster.fillPointClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, BitMath.floor((mouseInput.x - canvasPosition.x) / canvasScale), BitMath.floor((mouseInput.y - canvasPosition.y) / canvasScale), 0xffffffff);  
         },
         render() {
             Raster.fill(displayRaster.pixels, displayRaster.pixelCount, 0x00000000);
-            Raster.copyPixelsClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x, canvasPosition.y);
+            //Raster.copyPixelsClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x, canvasPosition.y);
+            Raster.copyPixelsScaled(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, canvasPosition.x, canvasPosition.y, canvasScale);
         },
         resizeDisplayRaster(width, height) {
             resizeRaster(displayRaster, width, height);
