@@ -39,31 +39,36 @@ const Raster = {
         }
     },
 
+    // This method could write outside of the target buffer, so only use it if you know for sure that the source is within the target bounds.
+    // Copies all pixels from the source into the target starting at the specified position in the target.
     copyPixels(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY) {
-        const bottom = targetY + sourceHeight;
-        const right = targetX + sourceWidth;
+        const lastTargetRow = targetY + sourceHeight;
+        const lastTargetColumn = targetX + sourceWidth;
 
-        let sourceIndex = 0;
-        for (let pixelY = targetY; pixelY < bottom; pixelY++)
-            for (let pixelX = targetX; pixelX < right; pixelX++) {
-                targetPixels[pixelY * targetWidth + pixelX] = sourcePixels[sourceIndex];
+        let sourceIndex = 0; // This method always copies the entire sourcePixels array in contiguous order, so we don't need to loop 
+        for (let targetRow = targetY; targetRow < lastTargetRow; targetRow++) {
+            const firstIndexInTargetRow = targetRow * targetWidth; // The first index in the target row.
+            for (let targetColumn = targetX; targetColumn < lastTargetColumn; targetColumn++) {
+                targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[sourceIndex];
                 sourceIndex++;
             }
+        }
     },
 
     copyPixelsClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY) {
-        const left = BitMath.clampZero(targetX);
-        const right = BitMath.clampHigh(targetX + sourceWidth, targetWidth);
-        if (left > right) return;
+        const firstTargetColumn = BitMath.clampZero(targetX);
+        const lastTargetColumn = BitMath.clampHigh(targetX + sourceWidth, targetWidth);
+        if (firstTargetColumn > lastTargetColumn) return;
 
-        const top = BitMath.clampZero(targetY);
-        const bottom = BitMath.clampHigh(targetY + sourceHeight, targetHeight);
-        if (top > bottom) return;
+        const firstTargetRow = BitMath.clampZero(targetY);
+        const lastTargetRow = BitMath.clampHigh(targetY + sourceHeight, targetHeight);
+        if (firstTargetRow > lastTargetRow) return;
 
-        for (let pixelY = top; pixelY < bottom; pixelY++) {
-            const sourcePixelY = pixelY - targetY;
-            for (let pixelX = left; pixelX < right; pixelX++)
-                targetPixels[pixelY * targetWidth + pixelX] = sourcePixels[sourcePixelY * sourceWidth + (pixelX - targetX)];
+        for (let targetRow = firstTargetRow; targetRow < lastTargetRow; targetRow++) {
+            const firstIndexInTargetRow = targetRow * targetWidth;
+            const sourceRow = targetRow - targetY;
+            for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++)
+                targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[sourceRow * sourceWidth + targetColumn - targetX];
         }
     },
 
@@ -82,14 +87,14 @@ const Raster = {
     //
     // To do this, loop over each row *scale* number of times and copy each pixel in the row *scale* number of times to the target array.
     copyPixelsScaled(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY, scale) {
-        for (let sourcePixelY = 0; sourcePixelY < sourceHeight; sourcePixelY++) {
-            const scaledY = sourcePixelY * scale + targetY;
-            const sourceRowOffset = sourcePixelY * sourceWidth;
+        for (let sourceRow = 0; sourceRow < sourceHeight; sourceRow++) {
+            const firstIndexInSourceRow = sourceRow * sourceWidth;
+            const targetRow = sourceRow * scale + targetY;
             for (let rowOffset = 0; rowOffset < scale; rowOffset++) {
-                const targetRowOffset = (scaledY + rowOffset) * targetWidth;
-                for (let sourcePixelX = 0; sourcePixelX < sourceWidth; sourcePixelX++) {
-                    const targetIndex = targetRowOffset + sourcePixelX * scale + targetX;
-                    const sourcePixelValue = sourcePixels[sourceRowOffset + sourcePixelX];
+                const firstIndexInTargetRow = (targetRow + rowOffset) * targetWidth;
+                for (let sourceColumn = 0; sourceColumn < sourceWidth; sourceColumn++) {
+                    const targetIndex = firstIndexInTargetRow + sourceColumn * scale + targetX;
+                    const sourcePixelValue = sourcePixels[firstIndexInSourceRow + sourceColumn];
                     for (let columnOffset = 0; columnOffset < scale; columnOffset++)
                         targetPixels[targetIndex + columnOffset] = sourcePixelValue;
                 }
@@ -97,20 +102,42 @@ const Raster = {
         }
     },
 
-    copyPixelsClippedScaled(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY, scale) {
-        const left = BitMath.clampZero(targetX);
-        const right = BitMath.clampHigh(targetX + sourceWidth, targetWidth);
-        if (left > right) return;
+    copyPixelsScaledClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY, scale) {
+        //console.log(`sourceWidth: ${sourceWidth}, sourceHeight: ${sourceHeight}`);
+        //console.log(`targetWidth: ${targetWidth}, targetHeight: ${targetHeight}, targetX: ${targetX}, targetY: ${targetY}`);
 
-        const top = BitMath.clampZero(targetY);
-        const bottom = BitMath.clampHigh(targetY + sourceHeight, targetHeight);
-        if (top > bottom) return;
+        // Set up the source and target boundaries for reading and writing.
+        let firstSourceColumn = targetX < 0 ? BitMath.floor(-targetX / scale) : 0;
+        let firstTargetColumn = BitMath.clampZero(targetX);
 
-        for (let pixelY = top; pixelY < bottom; pixelY++) {
-            const sourcePixelY = pixelY - targetY;
-            for (let pixelX = left; pixelX < right; pixelX++)
-                targetPixels[pixelY * targetWidth + pixelX] = sourcePixels[sourcePixelY * sourceWidth + (pixelX - targetX)];
+        let lastTargetColumn = BitMath.clampHigh(targetX + sourceWidth * scale, targetWidth);
+        //let lastSourceColumn = lastTargetColumn > targetWidth ? sourceWidth - BitMath.floor(targetWidth - lastTargetColumn / scale) : sourceWidth;
+
+        let firstSourceRow = targetY < 0 ? BitMath.floor(-targetY / scale) : 0;
+        let firstTargetRow = BitMath.clampZero(targetY);
+
+        let lastTargetRow = BitMath.clampHigh(targetY + sourceHeight * scale, targetHeight);
+        //let lastSourceRow = lastTargetRow > targetHeight ? sourceHeight - BitMath.floor(targetHeight - lastTargetRow / scale) : sourceHeight;
+
+        //console.log(`firstSourceRow: ${firstSourceRow}, lastSourceRow: ${lastSourceRow}, firstSourceColumn: ${firstSourceColumn}, lastSourceColumn: ${lastSourceColumn}`);
+        //console.log(`firstTargetRow: ${firstTargetRow}, lastTargetRow: ${lastTargetRow}, firstTargetColumn: ${firstTargetColumn}, lastTargetColumn: ${lastTargetColumn}`);
+
+        //let sourceColumn = firstSourceColumn;
+        //let sourceRow = firstSourceRow;
+        // Now loop over the target boundaries
+        for (let targetRow = firstTargetRow; targetRow < lastTargetRow; targetRow++) {
+            // Every time you loop over *scale* number of target rows, you can increment a source row
+            const sourceRow = Math.floor((targetRow - targetY) / scale);
+
+            for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++) {
+
+                const sourceColumn = Math.floor((targetColumn - targetX) / scale);
+                const value = sourcePixels[sourceRow * sourceWidth + sourceColumn];
+                targetPixels[targetRow * targetWidth + targetColumn] = value;
+            }
+
         }
+
     },
 
     // A raster is simply a grid of pixels. The grid doesn't exist in any particular coordinate space, but it does have dimensions.

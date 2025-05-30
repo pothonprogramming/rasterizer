@@ -35,7 +35,6 @@ const Rasterizer = (() => {
             displayRaster = Raster.createRaster(new Uint32Array(MAX_RASTER_WIDTH * MAX_RASTER_HEIGHT), 0, 0);
             resizeRaster(displayRaster, displayWidth, displayHeight);
             toolbarRaster = Raster.createRaster(new Uint32Array(64 * 16), 64, 16);
-
         },
         plotPoint() {
             console.log(BitMath.floor((mouseInput.x - canvasPosition.x) / canvasScale), BitMath.floor((mouseInput.y - canvasPosition.y) / canvasScale));
@@ -43,7 +42,7 @@ const Rasterizer = (() => {
         },
         render() {
             Raster.fill(displayRaster.pixels, displayRaster.pixelCount, 0x00000000);
-            //Raster.copyPixelsClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x, canvasPosition.y);
+            Raster.copyPixelsClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x + 20, canvasPosition.y + 20);
             Raster.copyPixelsScaled(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, canvasPosition.x, canvasPosition.y, canvasScale);
         },
         resizeDisplayRaster(width, height) {
