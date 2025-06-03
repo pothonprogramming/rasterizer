@@ -22,7 +22,13 @@ const BitMath = (() => {
         isNotZero(value) {
             return (value | -value) >> 31 & 1;
         },
-        toInteger(value) {
+        maximum(value1, value2) {
+            return value1 ^ ((value1 ^ value2) & ((value1 - value2) >> 31));
+        },
+        minimum(value1, value2) {
+            return value2 ^ ((value1 ^ value2) & ((value1 - value2) >> 31));
+        },
+        truncate(value) {
             return value | 0;
         }
     };

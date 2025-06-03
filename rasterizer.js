@@ -44,6 +44,7 @@ const Rasterizer = (() => {
             Raster.fill(displayRaster.pixels, displayRaster.pixelCount, 0x00000000);
             Raster.copyPixelsClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x + 20, canvasPosition.y + 20);
             Raster.copyPixelsScaled(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, canvasPosition.x, canvasPosition.y, canvasScale);
+            Raster.copyPixelsScaledClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x + 40, canvasPosition.y + 40, 20);
         },
         resizeDisplayRaster(width, height) {
             resizeRaster(displayRaster, width, height);

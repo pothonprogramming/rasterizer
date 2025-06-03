@@ -64,7 +64,7 @@
         canvasContext2D.putImageData(imageData, 0, 0);
     }
 
-    Rasterizer.initialize(100, 100, 10, 10, 2, 2);
+    Rasterizer.initialize(200, 200, 10, 10, 2, 2);
 
     const canvas = document.createElement("canvas");
     const canvasContext2D = canvas.getContext("2d");

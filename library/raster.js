@@ -93,8 +93,8 @@ const Raster = {
             for (let rowOffset = 0; rowOffset < scale; rowOffset++) {
                 const firstIndexInTargetRow = (targetRow + rowOffset) * targetWidth;
                 for (let sourceColumn = 0; sourceColumn < sourceWidth; sourceColumn++) {
-                    const targetIndex = firstIndexInTargetRow + sourceColumn * scale + targetX;
                     const sourcePixelValue = sourcePixels[firstIndexInSourceRow + sourceColumn];
+                    const targetIndex = firstIndexInTargetRow + sourceColumn * scale + targetX;
                     for (let columnOffset = 0; columnOffset < scale; columnOffset++)
                         targetPixels[targetIndex + columnOffset] = sourcePixelValue;
                 }
@@ -102,43 +102,73 @@ const Raster = {
         }
     },
 
+    // I think there is a more efficient way to scale and clip the source to the target.
+    // Rather than calculating the source row and column for every write to the target, it might be more efficient to iterate
+    // through source row and column with for loops. The only issue is that calculating edge offsets will require some tricky math
+    // and some conditions. For example, if the source is being scaled up by 2 and targetX is -1, only half of the source pixel will be
+    // drawn. Special offset values would need to be calculated for reading the source values for any clipped edges.
+    // One benefit of this approach is there is no branching. Function calls should ideally be inlined.
     copyPixelsScaledClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY, scale) {
-        //console.log(`sourceWidth: ${sourceWidth}, sourceHeight: ${sourceHeight}`);
-        //console.log(`targetWidth: ${targetWidth}, targetHeight: ${targetHeight}, targetX: ${targetX}, targetY: ${targetY}`);
-
-        // Set up the source and target boundaries for reading and writing.
-        let firstSourceColumn = targetX < 0 ? BitMath.floor(-targetX / scale) : 0;
         let firstTargetColumn = BitMath.clampZero(targetX);
-
-        let lastTargetColumn = BitMath.clampHigh(targetX + sourceWidth * scale, targetWidth);
-        //let lastSourceColumn = lastTargetColumn > targetWidth ? sourceWidth - BitMath.floor(targetWidth - lastTargetColumn / scale) : sourceWidth;
-
-        let firstSourceRow = targetY < 0 ? BitMath.floor(-targetY / scale) : 0;
         let firstTargetRow = BitMath.clampZero(targetY);
-
+        let lastTargetColumn = BitMath.clampHigh(targetX + sourceWidth * scale, targetWidth);
         let lastTargetRow = BitMath.clampHigh(targetY + sourceHeight * scale, targetHeight);
-        //let lastSourceRow = lastTargetRow > targetHeight ? sourceHeight - BitMath.floor(targetHeight - lastTargetRow / scale) : sourceHeight;
 
-        //console.log(`firstSourceRow: ${firstSourceRow}, lastSourceRow: ${lastSourceRow}, firstSourceColumn: ${firstSourceColumn}, lastSourceColumn: ${lastSourceColumn}`);
-        //console.log(`firstTargetRow: ${firstTargetRow}, lastTargetRow: ${lastTargetRow}, firstTargetColumn: ${firstTargetColumn}, lastTargetColumn: ${lastTargetColumn}`);
+        const inverseScale = 1 / scale; // Multiply by inverse scale instead of dividing by scale in the loop.
 
-        //let sourceColumn = firstSourceColumn;
-        //let sourceRow = firstSourceRow;
-        // Now loop over the target boundaries
         for (let targetRow = firstTargetRow; targetRow < lastTargetRow; targetRow++) {
-            // Every time you loop over *scale* number of target rows, you can increment a source row
-            const sourceRow = Math.floor((targetRow - targetY) / scale);
-
-            for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++) {
-
-                const sourceColumn = Math.floor((targetColumn - targetX) / scale);
-                const value = sourcePixels[sourceRow * sourceWidth + sourceColumn];
-                targetPixels[targetRow * targetWidth + targetColumn] = value;
-            }
-
+            const firstIndexInSourceRow = BitMath.truncate((targetRow - targetY) * inverseScale) * sourceWidth; // Using truncate instead of floor because value is always positive.
+            const firstIndexInTargetRow = targetRow * targetWidth;
+            // There might be 
+            for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++)
+                targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[firstIndexInSourceRow + BitMath.truncate((targetColumn - targetX) * inverseScale)];
         }
-
     },
+
+    // Here's some code that chatGPT spit out. I need to test it.
+    /*
+    copyPixelsScaledClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY, scale) {
+        console.log(`sourceWidth: ${sourceWidth}, sourceHeight: ${sourceHeight}`);
+        console.log(`targetWidth: ${targetWidth}, targetHeight: ${targetHeight}, targetX: ${targetX}, targetY: ${targetY}`);
+
+        const inverseScale = 1 / scale
+
+        // Calculate which source rows and columns are visible within the target
+        const firstSourceRow = Math.max(0, Math.floor((0 - targetY) * inverseScale))
+        const lastSourceRow = Math.min(sourceHeight, Math.ceil((targetHeight - targetY) * inverseScale));
+        const firstSourceColumn = Math.max(0, Math.floor((0 - targetX) * inverseScale));
+        const lastSourceColumn = Math.min(sourceWidth, Math.ceil((targetWidth - targetX) * inverseScale));
+
+        console.log(`firstSourceRow: ${firstSourceRow}, lastSourceRow: ${lastSourceRow}, firstSourceColumn: ${firstSourceColumn}, lastSourceColumn: ${lastSourceColumn}`);
+
+        for (let sourceRow = firstSourceRow; sourceRow < lastSourceRow; sourceRow++) {
+            const sourceRowOffset = sourceRow * sourceWidth
+            const targetRowStart = targetY + sourceRow * scale
+            const targetRowEnd = targetRowStart + scale
+
+            for (let rowOffset = 0; rowOffset < scale; rowOffset++) {
+                const targetRow = targetRowStart + rowOffset
+                if (targetRow < 0 || targetRow >= targetHeight) continue
+
+                const targetRowOffset = targetRow * targetWidth
+
+                for (let sourceCol = firstSourceColumn; sourceCol < lastSourceColumn; sourceCol++) {
+                    const targetColStart = targetX + sourceCol * scale
+                    const targetColEnd = targetColStart + scale
+
+                    const pixelValue = sourcePixels[sourceRowOffset + sourceCol]
+
+                    for (let colOffset = 0; colOffset < scale; colOffset++) {
+                        const targetCol = targetColStart + colOffset
+                        if (targetCol < 0 || targetCol >= targetWidth) continue
+
+                        targetPixels[targetRowOffset + targetCol] = pixelValue
+                    }
+                }
+            }
+        }
+    },
+    */
 
     // A raster is simply a grid of pixels. The grid doesn't exist in any particular coordinate space, but it does have dimensions.
     // pixels is an array of 32 bit ints, pixelCount is the number of array elements.
