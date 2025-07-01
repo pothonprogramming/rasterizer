@@ -1,37 +1,33 @@
-(() => {
-    function handleMouseDown(event) {
-        const canvasRectangle = canvas.getBoundingClientRect();
-        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
+// This is the platform specific code or "platform layer". It connects the core application logic to the platform it runs on.
+// The platform layer is meant to do things like get device input, render graphics, save/load data, etc.
+// Keep this code as minimal as possible. Anything that doesn't require platform/language specific code should be handled by the application layer.
 
+// The core application layer will be exposed through the global Rasterizer object.
+(() => {
+    function handleMouseDownOrMouseUp(event) {
+        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
+        const mouseDown = event.type === "mousedown";
         switch (event.button) {
             case 0:
-                Rasterizer.plotPoint();
-                Rasterizer.render();
-                render();
+                Rasterizer.updateMouseLeftIsDown(mouseDown);
                 break;
             case 2:
-                Rasterizer.updateMouseLeftIsDown(true);
+                Rasterizer.updateMouseRightIsDown(mouseDown);
                 break;
         }
+        Rasterizer.update();
+        Rasterizer.render();
+        render();
     }
 
     function handleMouseMove(event) {
-        const canvasRectangle = canvas.getBoundingClientRect();
         Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
+        Rasterizer.update();
+        Rasterizer.render();
+        render();
     }
 
-    function handleMouseUp(event) {
-        const canvasRectangle = canvas.getBoundingClientRect();
-        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
-        if (event.button === 2) animate = false;
-        switch (event.button) {
-            case 2:
-                Rasterizer.updateMouseLeftIsDown(false);
-                break;
-        }
-    }
-
-    function handleResize(event) {
+    function handleWindowResize(event) {
         const windowInnerWidth = event.target.innerWidth;
         const windowInnerHeight = event.target.innerHeight;
         const displayRasterWidth = Rasterizer.getDisplayRasterWidth();
@@ -47,6 +43,10 @@
 
         canvas.style.left = Math.floor((windowInnerWidth - canvasWidth) * 0.5) + "px";
         canvas.style.top = Math.floor((windowInnerHeight - canvasHeight) * 0.5) + "px";
+
+        canvasRectangle = canvas.getBoundingClientRect();
+
+        //Rasterizer.resizeDisplay(canvasWidth, canvasHeight);
 
         Rasterizer.render();
 
@@ -64,12 +64,12 @@
         canvasContext2D.putImageData(imageData, 0, 0);
     }
 
-    Rasterizer.initialize(200, 200, 10, 10, 2, 2);
-
     const canvas = document.createElement("canvas");
     const canvasContext2D = canvas.getContext("2d");
     canvasContext2D.imageSmoothingEnabled = false;
-
+    
+    let canvasRectangle;
+    
     let displayView;
     let imageData;
 
@@ -77,10 +77,10 @@
 
     document.body.appendChild(canvas);
     document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
-    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mousedown", handleMouseDownOrMouseUp);
     window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-    window.addEventListener("resize", handleResize);
+    window.addEventListener("mouseup", handleMouseDownOrMouseUp);
+    window.addEventListener("resize", handleWindowResize);
     window.dispatchEvent(new Event("resize"));
 
     render();

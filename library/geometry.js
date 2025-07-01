@@ -1,4 +1,7 @@
 const Geometry = {
+    createDimension2D(width, height) {
+        return { width, height };
+    },
     createPoint2D(x, y) {
         return { x, y };
     },

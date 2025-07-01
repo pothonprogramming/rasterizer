@@ -1,19 +1,63 @@
-
-
+// This is the core application code or "application layer". It should be completely platform agnostic to maximize portability.
+// Do not use non-portable techniques or libraries because logic is meant to be rewritten to C.
 const Rasterizer = (() => {
-
-    const mouseInput = Input.createMouseInput();
 
     const MAX_RASTER_WIDTH = 640;
     const MAX_RASTER_HEIGHT = 640;
 
-    let canvasRaster; // Represents the editable image.
-    let canvasPosition = Geometry.createPoint2D(32, 32);
-    let canvasScale = 10;
-    let displayRaster; // Represents everything that will be rendered.
-    let toolbarRaster; // Represents the toolbar.
-    let toolbarPosition = Geometry.createPoint2D(32, 16);
+    ////////////////
+    // INITIALIZE //
+    ////////////////
+    // Because all application logic is handled here, the application will initialize as soon as this code runs.
+    // Calling an initialize method from the platform layer is not necessary, and adds bloat to the platform layer.
 
+    const mouse = Input.createMouseInput();
+
+    const canvas = {
+        pixels:new Uint32Array(MAX_RASTER_WIDTH*MAX_RASTER_HEIGHT), // Initialize array to max size
+        pixelCount:0,
+        x:10,
+        y:10,
+        width:0,        
+        height:0,
+        scale:5
+    };
+
+    const display = {
+        pixels:new Uint32Array(MAX_RASTER_WIDTH*MAX_RASTER_HEIGHT),
+        pixelCount:0,
+        width:0,
+        height:0
+    };
+
+    const toolbar = {
+        pixels:new Uint32Array(MAX_RASTER_WIDTH*MAX_RASTER_HEIGHT),
+        pixelCount:0,
+        x:0,
+        y:0,
+        width:0,
+        height:0,
+        scale:1,
+        selectedColor:0xff000000
+    };
+
+    resizeRaster(canvas, 100, 100);
+    Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
+
+    resizeRaster(display, 640, 640);
+
+    resizeRaster(toolbar, 320, 160);
+
+    // You could do this in c by passing &width and &height instead of raster
+    /*
+        void resizeRaster(int *width, int *height, int w, int h) {
+            width = w;
+            height = h;
+        }
+
+        resizeRaster(&type1.width, &type1.height, 10, 20);
+        resizeRaster(&type2.width, &type2.height, 10, 20);
+    */
     function resizeRaster(raster, width, height) {
         if (width > MAX_RASTER_WIDTH) width = MAX_RASTER_WIDTH;
         if (height > MAX_RASTER_HEIGHT) height = MAX_RASTER_HEIGHT;
@@ -22,52 +66,107 @@ const Rasterizer = (() => {
         raster.pixelCount = width * height;
     }
 
+    function mouseIsInBounds(x, y, width, height, scale = 1) {
+        if (mouse.x < x || mouse.y < y || mouse.x > x + width * scale || mouse.y > y + height * scale) return false;
+        return true;
+    }
+
+    function plotPoint(canvasPixels, canvasWidth, canvasHeight, canvasX, canvasY, canvasScale = 1) {
+        console.log(BitMath.floor((mouse.x - canvasX) / canvasScale), BitMath.floor((mouse.y - canvasY) / canvasScale));
+        Raster.fillPointClipped(canvasPixels, canvasWidth, canvasHeight, BitMath.floor((mouse.x - canvasX) / canvasScale), BitMath.floor((mouse.y - canvasY) / canvasScale), 0xffffffff);
+    }
+
+    function drawPencilIcon(targetPixels, targetRasterWidth, x, y, scale, color) {
+        const x0 = x;
+        const y0 = BitMath.floor(y + 1 * scale);
+        const x1 = x;
+        const y1 = BitMath.floor(y + 0.75 * scale);
+        const x2 = BitMath.floor(x + 0.75 * scale);
+        const y2 = y;
+        const x3 = BitMath.floor(x + 1 * scale);
+        const y3 = BitMath.floor(y + 0.25 * scale);
+        const x4 = BitMath.floor(x + 0.25 * scale);
+        const y4 = BitMath.floor(y + 1 * scale);
+        Raster.drawLineSegment(targetPixels, targetRasterWidth, x0, y0, x1, y1, color);
+        Raster.drawLineSegment(targetPixels, targetRasterWidth, x1, y1, x2, y2, color);
+        Raster.drawLineSegment(targetPixels, targetRasterWidth, x2, y2, x3, y3, color);
+        Raster.drawLineSegment(targetPixels, targetRasterWidth, x3, y3, x4, y4, color);
+        Raster.drawLineSegment(targetPixels, targetRasterWidth, x4, y4, x0, y0, color); 
+    }
+
     return {
-        getDisplayRasterPixels() { return displayRaster.pixels; },
-        getDisplayRasterPixelCount() { return displayRaster.pixelCount; },
-        getDisplayRasterWidth() { return displayRaster.width; },
-        getDisplayRasterHeight() { return displayRaster.height; },
-        initialize(displayWidth, displayHeight, canvasX, canvasY, canvasWidth, canvasHeight) {
-            canvasRaster = Raster.createRaster(new Uint32Array(MAX_RASTER_WIDTH * MAX_RASTER_HEIGHT), 0, 0);
-            resizeRaster(canvasRaster, canvasWidth, canvasHeight);
-            Raster.fill(canvasRaster.pixels, canvasRaster.pixelCount, 0xff0000ff);
-            Geometry.setPoint2D(canvasPosition, canvasX, canvasY);
-            displayRaster = Raster.createRaster(new Uint32Array(MAX_RASTER_WIDTH * MAX_RASTER_HEIGHT), 0, 0);
-            resizeRaster(displayRaster, displayWidth, displayHeight);
-            toolbarRaster = Raster.createRaster(new Uint32Array(64 * 16), 64, 16);
-        },
-        plotPoint() {
-            console.log(BitMath.floor((mouseInput.x - canvasPosition.x) / canvasScale), BitMath.floor((mouseInput.y - canvasPosition.y) / canvasScale));
-            Raster.fillPointClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, BitMath.floor((mouseInput.x - canvasPosition.x) / canvasScale), BitMath.floor((mouseInput.y - canvasPosition.y) / canvasScale), 0xffffffff);  
-        },
+        getDisplayRasterPixels() { return display.pixels; },
+        getDisplayRasterPixelCount() { return display.pixelCount; },
+        getDisplayRasterWidth() { return display.width; },
+        getDisplayRasterHeight() { return display.height; },
         render() {
-            Raster.fill(displayRaster.pixels, displayRaster.pixelCount, 0x00000000);
-            Raster.copyPixelsClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x + 20, canvasPosition.y + 20);
-            Raster.copyPixelsScaled(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, canvasPosition.x, canvasPosition.y, canvasScale);
-            Raster.copyPixelsScaledClipped(canvasRaster.pixels, canvasRaster.width, canvasRaster.height, displayRaster.pixels, displayRaster.width, displayRaster.height, canvasPosition.x + 40, canvasPosition.y + 40, 20);
+            // Clear the background to black.
+            Raster.fill(display.pixels, display.pixelCount, 0x00000000);
+            // Interior border around displayRaster.
+            Raster.fillHorizontalLine(display.pixels, display.width, 0, 0, display.width, 0xffffffff);
+            Raster.fillHorizontalLine(display.pixels, display.width, 0, display.height - 1, display.width, 0xffffffff);
+            Raster.fillVerticalLine(display.pixels, display.width, 0, 0, display.height, 0xffffffff);
+            Raster.fillVerticalLine(display.pixels, display.width, display.width - 1, 0, display.height, 0xffffffff);
+
+            // Messing around with drawing the canvas.
+            //Raster.copyPixelsClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvasPosition.x + 20, canvasPosition.y + 20);
+            //Raster.copyPixelsScaled(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, canvasPosition.x, canvasPosition.y, canvasScale);
+            //Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvasPosition.x + 180, canvasPosition.y + 40, 20);
+
+            Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
+            drawPencilIcon(canvas.pixels, canvas.width, 10, 10, 12, 0x00000000);
+            Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
+            Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvas.x, canvas.y, canvas.scale);
+
+            // Draw the toolbar
+            //Raster.fillRectangleClipped(toolbar.pixels,toolbar.width,toolbar.height,0, 0, toolbar.width, toolbar.height, toolbar.selectedColor);
+            //Raster.copyPixelsScaledClipped(toolbar.pixels, toolbar.width, toolbar.height, display.pixels, display.width, display.height, toolbar.x, toolbar.y, toolbar.scale);
+
+            // Horizontal
+            
+            //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 0, 100, 0xffffffff);
+            // Vertical
+            //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 100, 200, 0xffffffff);
+            //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 100, 0, 0xffffffff);
+            // 45 degree
+            //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 200, 0, 0xffffffff);
+            //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 200, 200, 0xffffffff);
+            //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 0, 0, 0xff0000ff);
+            //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 0, 200, 0xff0000ff);
+
         },
-        resizeDisplayRaster(width, height) {
-            resizeRaster(displayRaster, width, height);
+        resizeDisplay(width, height) {
+            resizeRaster(display, width, height);
         },
         update() {
 
-            
+            if (mouse.leftIsDown) {
+
+                if (mouseIsInBounds(canvas.x, canvas.y, canvas.width, canvas.height, canvas.scale)) {
+                    plotPoint(canvas.pixels, canvas.width, canvas.height, canvas.x, canvas.y, canvas.scale);
+                }
+
+            } 
 
         },
         updateMousePosition(x, y) {
-            mouseInput.x = x;
-            mouseInput.y = y;
+            mouse.x = x;
+            mouse.y = y;
 
 
-            /*mouseInput.wheelIsDown = wheelIsDown;
-            mouseInput.wheelIsRotatingDown = wheelIsRotatingDown;
-            mouseInput.wheelIsRotatingUp = wheelIsRotatingUp;*/
+            /*mouse.wheelIsDown = wheelIsDown;
+            mouse.wheelIsRotatingDown = wheelIsRotatingDown;
+            mouse.wheelIsRotatingUp = wheelIsRotatingUp;*/
         },
         updateMouseLeftIsDown(leftIsDown) {
-            mouseInput.leftIsDown = leftIsDown;
+            mouse.leftDownX = mouse.x;
+            mouse.leftDownY = mouse.y;
+            mouse.leftIsDown = leftIsDown;
         },
         updateMouseRightIsDown(rightIsDown) {
-            mouseInput.rightIsDown = rightIsDown;
+            mouse.rightDownX = mouse.x;
+            mouse.rightDownY = mouse.y;
+            mouse.rightIsDown = rightIsDown;
         }
     };
 

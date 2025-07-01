@@ -1,5 +1,5 @@
 // Assumes Little Endian byte order.
-// Color values will be stored as AABBGGRR.
+// Color values are expected to be stored as AABBGGRR.
 // For example, opaque blue should be written as 0xffff0000, not 0x0000ffff.
 
 const Raster = {
@@ -125,60 +125,12 @@ const Raster = {
         }
     },
 
-    // Here's some code that chatGPT spit out. I need to test it.
-    /*
-    copyPixelsScaledClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY, scale) {
-        console.log(`sourceWidth: ${sourceWidth}, sourceHeight: ${sourceHeight}`);
-        console.log(`targetWidth: ${targetWidth}, targetHeight: ${targetHeight}, targetX: ${targetX}, targetY: ${targetY}`);
-
-        const inverseScale = 1 / scale
-
-        // Calculate which source rows and columns are visible within the target
-        const firstSourceRow = Math.max(0, Math.floor((0 - targetY) * inverseScale))
-        const lastSourceRow = Math.min(sourceHeight, Math.ceil((targetHeight - targetY) * inverseScale));
-        const firstSourceColumn = Math.max(0, Math.floor((0 - targetX) * inverseScale));
-        const lastSourceColumn = Math.min(sourceWidth, Math.ceil((targetWidth - targetX) * inverseScale));
-
-        console.log(`firstSourceRow: ${firstSourceRow}, lastSourceRow: ${lastSourceRow}, firstSourceColumn: ${firstSourceColumn}, lastSourceColumn: ${lastSourceColumn}`);
-
-        for (let sourceRow = firstSourceRow; sourceRow < lastSourceRow; sourceRow++) {
-            const sourceRowOffset = sourceRow * sourceWidth
-            const targetRowStart = targetY + sourceRow * scale
-            const targetRowEnd = targetRowStart + scale
-
-            for (let rowOffset = 0; rowOffset < scale; rowOffset++) {
-                const targetRow = targetRowStart + rowOffset
-                if (targetRow < 0 || targetRow >= targetHeight) continue
-
-                const targetRowOffset = targetRow * targetWidth
-
-                for (let sourceCol = firstSourceColumn; sourceCol < lastSourceColumn; sourceCol++) {
-                    const targetColStart = targetX + sourceCol * scale
-                    const targetColEnd = targetColStart + scale
-
-                    const pixelValue = sourcePixels[sourceRowOffset + sourceCol]
-
-                    for (let colOffset = 0; colOffset < scale; colOffset++) {
-                        const targetCol = targetColStart + colOffset
-                        if (targetCol < 0 || targetCol >= targetWidth) continue
-
-                        targetPixels[targetRowOffset + targetCol] = pixelValue
-                    }
-                }
-            }
-        }
-    },
-    */
-
-    // A raster is simply a grid of pixels. The grid doesn't exist in any particular coordinate space, but it does have dimensions.
+    // A raster is simply a 2 dimensional grid of pixels.
+    // This object is helpful for tracking the pixel values, the number of pixels, and the width and height of the grid.
     // pixels is an array of 32 bit ints, pixelCount is the number of array elements.
-    // width and height must not exceede the length of the pixels array to avoid overflows.
+    // width and height must not exceed the length of the pixels array to avoid overflows.
     createRaster(pixels, width, height) {
         return { pixels, pixelCount: width * height, width, height }
-    },
-
-    fill(pixels, pixelCount, color) {
-        for (let i = 0; i < pixelCount; i++) pixels[i] = color;
     },
 
     drawCircle(pixels, rasterWidth, targetX, targetY, diameter, color) {
@@ -209,6 +161,34 @@ const Raster = {
         }
     },
 
+    drawLineSegment(pixels, rasterWidth, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
+        const absoluteRise = BitMath.absolute(lineSegmentY1 - lineSegmentY0);
+        const absoluteRun = BitMath.absolute(lineSegmentX1 - lineSegmentX0);
+        const stepX = lineSegmentX0 < lineSegmentX1 ? 1 : -1;
+        const stepY = lineSegmentY0 < lineSegmentY1 ? 1 : -1;
+        let error = absoluteRun - absoluteRise;
+        let x = lineSegmentX0;
+        let y = lineSegmentY0;
+        while(x !== lineSegmentX1 || y !== lineSegmentY1) {
+            pixels[y * rasterWidth + x] = color;
+            const e2 = 2*error;
+            if (e2 > -absoluteRise) {
+                error -= absoluteRise;
+                x += stepX;
+            }
+            if (e2 < absoluteRun) {
+                error += absoluteRun;
+                y += stepY;
+            }
+        }
+        pixels[y * rasterWidth + x] = color;
+    },
+
+    fill(pixels, pixelCount, color) {
+        for (let i = 0; i < pixelCount; i++) pixels[i] = color;
+    },
+
+    // This isn't working yet.
     fillCircle(pixels, rasterWidth, circleX, circleY, circleRadius, color) {
         const step = Math_PI * 0.0625;
         const cos = Math.cos(step);
@@ -225,6 +205,13 @@ const Raster = {
             pixelX = Math.round(x);
             pixelY = Math.round(y);
         }
+    },
+
+    // Does not protect against buffer overflow.
+    fillHorizontalLine(pixels, rasterWidth, lineX, lineY, lineWidth, color) {
+        const firstIndex = lineY * rasterWidth + lineX;
+        const lastIndex = firstIndex + lineWidth;
+        for (let index = firstIndex; index < lastIndex; index++) pixels[index] = color;
     },
 
     fillPoint(pixels, rasterWidth, pointX, pointY, color) {
@@ -257,6 +244,13 @@ const Raster = {
         for (let pixelY = top; pixelY < bottom; pixelY++)
             for (let pixelX = left; pixelX < right; pixelX++)
                 pixels[pixelY * rasterWidth + pixelX] = color;
+    },
+
+    // Does not protect against buffer overflow.
+    fillVerticalLine(pixels, rasterWidth, lineX, lineY, lineHeight, color) {
+        const firstIndex = lineY * rasterWidth + lineX;
+        const lastIndex = firstIndex + lineHeight * rasterWidth;
+        for (let index = firstIndex; index < lastIndex; index += rasterWidth) pixels[index] = color;
     }
 
 };
