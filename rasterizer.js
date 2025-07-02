@@ -115,8 +115,14 @@ const Rasterizer = (() => {
 
             Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
             drawPencilIcon(canvas.pixels, canvas.width, 10, 10, 12, 0x00000000);
-            Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
+            //Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
+            Raster.drawLineSegmentClipped(canvas.pixels, canvas.width, canvas.height, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 50, 50, 0xffffffff);
+            
+            //Raster.fillHorizontalLineClipped(canvas.pixels, canvas.width, canvas.height, -10, 99, 2000, 0xffffffff);
+            //Raster.fillVerticalLineClipped(canvas.pixels, canvas.width, canvas.height, 99, 0, 99, 0xffffffff);
             Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvas.x, canvas.y, canvas.scale);
+
+            
 
             // Draw the toolbar
             //Raster.fillRectangleClipped(toolbar.pixels,toolbar.width,toolbar.height,0, 0, toolbar.width, toolbar.height, toolbar.selectedColor);

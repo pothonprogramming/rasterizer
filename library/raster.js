@@ -160,28 +160,115 @@ const Raster = {
             x++;
         }
     },
+    drawCircleClipped() { },
 
     drawLineSegment(pixels, rasterWidth, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
         const absoluteRise = BitMath.absolute(lineSegmentY1 - lineSegmentY0);
         const absoluteRun = BitMath.absolute(lineSegmentX1 - lineSegmentX0);
         const stepX = lineSegmentX0 < lineSegmentX1 ? 1 : -1;
         const stepY = lineSegmentY0 < lineSegmentY1 ? 1 : -1;
-        let error = absoluteRun - absoluteRise;
-        let x = lineSegmentX0;
-        let y = lineSegmentY0;
-        while(x !== lineSegmentX1 || y !== lineSegmentY1) {
-            pixels[y * rasterWidth + x] = color;
-            const e2 = 2*error;
-            if (e2 > -absoluteRise) {
-                error -= absoluteRise;
-                x += stepX;
+
+        let index = lineSegmentY0 * rasterWidth + lineSegmentX0;
+        const lastIndex = lineSegmentY1 * rasterWidth + lineSegmentX1;
+        const indexYStep = stepY * rasterWidth;
+
+        // If the line is steep, then y will always be incremented, however x will not always be incremented.
+        // Else if the line is not steep, then x will always be incremented, but y will not always be incremented.
+        if (absoluteRise > absoluteRun) {
+            let error = absoluteRise >> 1;
+            while (index !== lastIndex) {
+                pixels[index] = color;
+                index += indexYStep;
+                error -= absoluteRun;
+                if (error < 0) {
+                    index += stepX;
+                    error += absoluteRise;
+                }
             }
-            if (e2 < absoluteRun) {
-                error += absoluteRun;
-                y += stepY;
+        } else {
+            let error = absoluteRun >> 1;
+            while (index !== lastIndex) {
+                pixels[index] = color;
+                index += stepX;
+                error -= absoluteRise;
+                if (error < 0) {
+                    index += indexYStep;
+                    error += absoluteRun;
+                }
             }
         }
-        pixels[y * rasterWidth + x] = color;
+        pixels[index] = color; // Draw the last pixel in the line segment.
+    },
+
+    drawLineSegmentClipped(pixels, rasterWidth, rasterHeight, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
+        let t0 = 0; // time along the line segment at point0
+        let t1 = 1; // time along the line segment at point1
+        let deltaX = lineSegmentX1 - lineSegmentX0; // rate of change along x axis
+        let deltaY = lineSegmentY1 - lineSegmentY0; // rate of change along y axis
+
+        const values = [-deltaX, lineSegmentX0, deltaX, rasterWidth - 1 - lineSegmentX0, -deltaY, lineSegmentY0, deltaY, rasterHeight - 1 - lineSegmentY0];
+
+        for (let i = 0; i < 8; i += 2) {
+            let rateOfChange = values[i];
+            let distanceToEdge = values[i + 1];
+            if (rateOfChange === 0) { // A perfectly vertical or horizontal line
+                if (distanceToEdge < 0) return;
+                continue;
+            }
+            let t2 = distanceToEdge / rateOfChange; // time along the line segment relative to edge
+            if (rateOfChange < 0) {
+                if (t2 > t1) return; // time should not exceed high constraint of t1
+                if (t2 > t0) t0 = t2; // time should exceed low constraint of t0
+            } else {
+                if (t2 < t0) return; // time should not be less than low constraint of t0
+                if (t2 < t1) t1 = t2; // time should be less than high constraint of t1
+            }
+        }
+
+        const x0 = lineSegmentX0;
+        const y0 = lineSegmentY0;
+
+        // Set new values. They may be the same or they may be updated by clipping.
+        lineSegmentX0 = BitMath.floor(x0 + deltaX * t0);
+        lineSegmentY0 = BitMath.floor(y0 + deltaY * t0);
+        lineSegmentX1 = BitMath.floor(x0 + deltaX * t1);
+        lineSegmentY1 = BitMath.floor(y0 + deltaY * t1);
+
+        const absoluteRise = BitMath.absolute(lineSegmentY1 - lineSegmentY0); // Must recompute rise with new values
+        const absoluteRun = BitMath.absolute(lineSegmentX1 - lineSegmentX0); // Must recompute run with new values
+        const stepX = deltaX > 0 ? 1 : -1;
+        const stepY = deltaY > 0 ? 1 : -1;
+
+        let index = lineSegmentY0 * rasterWidth + lineSegmentX0;
+        const lastIndex = lineSegmentY1 * rasterWidth + lineSegmentX1;
+        const indexYStep = stepY * rasterWidth;
+
+        // If the line is steep, then y will always be incremented, however x will not always be incremented.
+        // Else if the line is not steep, then x will always be incremented, but y will not always be incremented.
+        if (absoluteRise > absoluteRun) {
+            let error = absoluteRise >> 1;
+            while (index !== lastIndex) {
+                pixels[index] = color;
+                index += indexYStep;
+                error -= absoluteRun;
+                if (error < 0) {
+                    index += stepX;
+                    error += absoluteRise;
+                }
+            }
+        } else {
+            let error = absoluteRun >> 1;
+            while (index !== lastIndex) {
+                pixels[index] = color;
+                index += stepX;
+                error -= absoluteRise;
+                if (error < 0) {
+                    index += indexYStep;
+                    error += absoluteRun;
+                }
+            }
+        }
+        pixels[index] = color; // Draw the last pixel in the line segment.
     },
 
     fill(pixels, pixelCount, color) {
@@ -211,6 +298,19 @@ const Raster = {
     fillHorizontalLine(pixels, rasterWidth, lineX, lineY, lineWidth, color) {
         const firstIndex = lineY * rasterWidth + lineX;
         const lastIndex = firstIndex + lineWidth;
+        for (let index = firstIndex; index < lastIndex; index++) pixels[index] = color;
+    },
+
+    // This method is not meant to handle negative line width. Lines will always be drawn starting at the leftmost coordinate.
+    fillHorizontalLineClipped(pixels, rasterWidth, rasterHeight, lineLeftX, lineY, lineWidth, color) {
+        let lineRightX = lineLeftX + lineWidth; // Technically this is 1 greater than the true right x of the line, but the last index is never drawn.
+        if (lineLeftX >= rasterWidth || lineRightX <= 0 || lineY < 0 || lineY >= rasterHeight) return;
+        if (lineLeftX < 0) lineLeftX = 0;
+        if (lineRightX > rasterWidth) lineRightX = rasterWidth; // Still technically 1 greater than the maximum right x of the line.
+
+        const firstIndex = lineY * rasterWidth + lineLeftX;
+        const lastIndex = firstIndex + lineRightX - lineLeftX;
+
         for (let index = firstIndex; index < lastIndex; index++) pixels[index] = color;
     },
 
@@ -250,6 +350,18 @@ const Raster = {
     fillVerticalLine(pixels, rasterWidth, lineX, lineY, lineHeight, color) {
         const firstIndex = lineY * rasterWidth + lineX;
         const lastIndex = firstIndex + lineHeight * rasterWidth;
+        for (let index = firstIndex; index < lastIndex; index += rasterWidth) pixels[index] = color;
+    },
+
+    // This method is not meant to handle negative lineHeight.
+    fillVerticalLineClipped(pixels, rasterWidth, rasterHeight, lineX, lineTopY, lineHeight, color) {
+        let lineBottomY = lineTopY + lineHeight; // This is technically 1 greater than the actual bottom y of the line.
+        if (lineBottomY <= 0 || lineTopY >= rasterHeight || lineX < 0 || lineX >= rasterWidth) return;
+        if (lineBottomY > rasterHeight) lineBottomY = rasterHeight; // Still 1 greater than the actual bottom y of the line.
+        if (lineTopY < 0) lineTopY = 0;
+
+        const firstIndex = lineTopY * rasterWidth + lineX;
+        const lastIndex = lineBottomY * rasterWidth + lineX; // The last index is never drawn. Use <= in loop to draw last index.
         for (let index = firstIndex; index < lastIndex; index += rasterWidth) pixels[index] = color;
     }
 
