@@ -295,20 +295,20 @@ const Raster = {
     },
 
     // Does not protect against buffer overflow.
-    fillHorizontalLine(pixels, rasterWidth, lineX, lineY, lineWidth, color) {
-        const firstIndex = lineY * rasterWidth + lineX;
+    fillHorizontalLine(pixels, rasterWidth, line_x, line_y, lineWidth, color) {
+        const firstIndex = line_y * rasterWidth + line_x;
         const lastIndex = firstIndex + lineWidth;
         for (let index = firstIndex; index < lastIndex; index++) pixels[index] = color;
     },
 
     // This method is not meant to handle negative line width. Lines will always be drawn starting at the leftmost coordinate.
-    fillHorizontalLineClipped(pixels, rasterWidth, rasterHeight, lineLeftX, lineY, lineWidth, color) {
+    fillHorizontalLineClipped(pixels, rasterWidth, rasterHeight, lineLeftX, line_y, lineWidth, color) {
         let lineRightX = lineLeftX + lineWidth; // Technically this is 1 greater than the true right x of the line, but the last index is never drawn.
-        if (lineLeftX >= rasterWidth || lineRightX <= 0 || lineY < 0 || lineY >= rasterHeight) return;
+        if (lineLeftX >= rasterWidth || lineRightX <= 0 || line_y < 0 || line_y >= rasterHeight) return;
         if (lineLeftX < 0) lineLeftX = 0;
         if (lineRightX > rasterWidth) lineRightX = rasterWidth; // Still technically 1 greater than the maximum right x of the line.
 
-        const firstIndex = lineY * rasterWidth + lineLeftX;
+        const firstIndex = line_y * rasterWidth + lineLeftX;
         const lastIndex = firstIndex + lineRightX - lineLeftX;
 
         for (let index = firstIndex; index < lastIndex; index++) pixels[index] = color;
@@ -346,22 +346,90 @@ const Raster = {
                 pixels[pixelY * rasterWidth + pixelX] = color;
     },
 
+    fillTriangle(pixels, rasterWidth, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
+        // The bounding box of the triangle
+        const box_bottom = BitMath.floor(BitMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
+        const box_left = BitMath.floor(BitMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_right = BitMath.floor(BitMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_top = BitMath.floor(BitMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
+
+        // The equation of a line is ax + by + c = 0 when x and y are not both equal to 0.
+        // When a point (x, y) is on the line, the equation will yield 0.
+        // When a point (x, y) is to the left or right of the line, the equation will yield a positive or negative value.
+        // Set up the coefficient values for each line segment in the triangle.
+        const a0 = triangle_y0 - triangle_y1; // Normal x
+        const b0 = triangle_x1 - triangle_x0; // Normal y
+        const c0 = -a0 * triangle_x0 - b0 * triangle_y0;
+
+        const a1 = triangle_y1 - triangle_y2;
+        const b1 = triangle_x2 - triangle_x1;
+        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+
+        const a2 = triangle_y2 - triangle_y0;
+        const b2 = triangle_x0 - triangle_x2;
+        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+        // Get the x and y offsets for each pixel test
+        const x0 = a0 < 0 ? 0 : 1;
+        const y0 = b0 < 0 ? 0 : 1;
+        const x1 = a1 < 0 ? 0 : 1;
+        const y1 = b1 < 0 ? 0 : 1;
+        const x2 = a2 < 0 ? 0 : 1;
+        const y2 = b2 < 0 ? 0 : 1;
+
+        const offset0 = a0 * x0 + b0 * y0 + c0;
+        const offset1 = a1 * x1 + b1 * y1 + c1;
+        const offset2 = a2 * x2 + b2 * y2 + c2;
+
+        for (let y = box_top; y <= box_bottom; y++) {
+            //let wedge0 = a0 * box_left + b0 * y + c0;
+            //let wedge1 = a1 * box_left + b1 * y + c1;
+            //let wedge2 = a2 * box_left + b2 * y + c2;
+
+            let wedge0 = a0 * box_left + b0 * y + offset0;
+            let wedge1 = a1 * box_left + b1 * y + offset1;
+            let wedge2 = a2 * box_left + b2 * y + offset2;
+            
+            for (let x = box_left; x <= box_right; x++) {
+                //let wedge0 = a0 * x + b0 * y + offset0;
+                //let wedge1 = a1 * x + b1 * y + offset1;
+                //let wedge2 = a2 * x + b2 * y + offset2;
+
+                // You can also OR the 3 values together and test sign
+                if (wedge0 >= 0 && wedge1 >= 0 && wedge2 >= 0) pixels[y * rasterWidth + x] = color;
+
+                wedge0 += a0;
+                wedge1 += a1;
+                wedge2 += a2;
+            }
+        }
+    },
+
+    /*const ab0dot = a0 * a0 + b0 * b0;
+        const ab1dot = a1 * a1 + b1 * b1;
+        const ab2dot = a2 * a2 + b2 * b2;
+
+        const ab1cross = a0 * b1 - b0 * a1;
+
+        console.log(a0 * 90 + b0 * 30 + c0, a1 * 90 + b1 * 30 + c1, a2 * 90 + b2 * 30 + c2);
+        */
+
     // Does not protect against buffer overflow.
-    fillVerticalLine(pixels, rasterWidth, lineX, lineY, lineHeight, color) {
-        const firstIndex = lineY * rasterWidth + lineX;
+    fillVerticalLine(pixels, rasterWidth, line_x, line_y, lineHeight, color) {
+        const firstIndex = line_y * rasterWidth + line_x;
         const lastIndex = firstIndex + lineHeight * rasterWidth;
         for (let index = firstIndex; index < lastIndex; index += rasterWidth) pixels[index] = color;
     },
 
     // This method is not meant to handle negative lineHeight.
-    fillVerticalLineClipped(pixels, rasterWidth, rasterHeight, lineX, lineTopY, lineHeight, color) {
+    fillVerticalLineClipped(pixels, rasterWidth, rasterHeight, line_x, lineTopY, lineHeight, color) {
         let lineBottomY = lineTopY + lineHeight; // This is technically 1 greater than the actual bottom y of the line.
-        if (lineBottomY <= 0 || lineTopY >= rasterHeight || lineX < 0 || lineX >= rasterWidth) return;
+        if (lineBottomY <= 0 || lineTopY >= rasterHeight || line_x < 0 || line_x >= rasterWidth) return;
         if (lineBottomY > rasterHeight) lineBottomY = rasterHeight; // Still 1 greater than the actual bottom y of the line.
         if (lineTopY < 0) lineTopY = 0;
 
-        const firstIndex = lineTopY * rasterWidth + lineX;
-        const lastIndex = lineBottomY * rasterWidth + lineX; // The last index is never drawn. Use <= in loop to draw last index.
+        const firstIndex = lineTopY * rasterWidth + line_x;
+        const lastIndex = lineBottomY * rasterWidth + line_x; // The last index is never drawn. Use <= in loop to draw last index.
         for (let index = firstIndex; index < lastIndex; index += rasterWidth) pixels[index] = color;
     }
 

@@ -20,7 +20,7 @@ const Rasterizer = (() => {
         y:10,
         width:0,        
         height:0,
-        scale:5
+        scale:6
     };
 
     const display = {
@@ -40,6 +40,37 @@ const Rasterizer = (() => {
         scale:1,
         selectedColor:0xff000000
     };
+
+    const triangle = [[50, 50], [80, 50], [65, 80]];
+    let triangleAngle = 0;
+
+    function rotatePointsAroundCenter(points, angleRadians) {
+        if (!points.length) return [];
+    
+        // Step 1: Calculate the centroid (average x and y)
+        let sumX = 0, sumY = 0;
+        for (const [x, y] of points) {
+            sumX += x;
+            sumY += y;
+        }
+        const centerX = sumX / points.length;
+        const centerY = sumY / points.length;
+    
+        // Step 2: Rotate each point around the centroid
+        const cosA = Math.cos(angleRadians);
+        const sinA = Math.sin(angleRadians);
+        const rotated = points.map(([x, y]) => {
+            const dx = x - centerX;
+            const dy = y - centerY;
+    
+            const rx = dx * cosA - dy * sinA + centerX;
+            const ry = dx * sinA + dy * cosA + centerY;
+    
+            return [rx, ry];
+        });
+    
+        return rotated;
+    }
 
     resizeRaster(canvas, 100, 100);
     Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
@@ -116,8 +147,16 @@ const Rasterizer = (() => {
             Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
             drawPencilIcon(canvas.pixels, canvas.width, 10, 10, 12, 0x00000000);
             //Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
-            Raster.drawLineSegmentClipped(canvas.pixels, canvas.width, canvas.height, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 50, 50, 0xffffffff);
+            //Raster.drawLineSegmentClipped(canvas.pixels, canvas.width, canvas.height, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 50, 50, 0xffffffff);
             
+            Raster.fillTriangle(canvas.pixels, canvas.width, 10, 10, 25, 10, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xff00ff00);
+            Raster.fillPoint(canvas.pixels, canvas.width, 90, 30, 0xffffffff);
+            Raster.fillPoint(canvas.pixels, canvas.width, 10, 10, 0xffffffff);
+            Raster.fillPoint(canvas.pixels, canvas.width, 25, 10, 0xffffffff);
+
+            let p = rotatePointsAroundCenter(triangle, triangleAngle += 0.005);
+            console.log(p);
+            Raster.fillTriangle(canvas.pixels, canvas.width, p[0][0], p[0][1], p[1][0], p[1][1], p[2][0], p[2][1], 0xffff0000);
             //Raster.fillHorizontalLineClipped(canvas.pixels, canvas.width, canvas.height, -10, 99, 2000, 0xffffffff);
             //Raster.fillVerticalLineClipped(canvas.pixels, canvas.width, canvas.height, 99, 0, 99, 0xffffffff);
             Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvas.x, canvas.y, canvas.scale);

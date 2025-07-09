@@ -1,10 +1,12 @@
 // Note that these functions will only work with whole integers. Floats will be truncated.
 const BitMath = (() => {
     return {
+        // Removes the sign from the integer. Will truncate a float value.
         absolute(value) {
             const mask = value >> 31;
             return (value ^ mask) - mask;
         },
+        // Returns the approximate squate root of a number. This JS version uses array buffers to take advantage of bitwise logic.
         approximateSquareRoot: (() => {
             // These will live for the life of the program.
             // Defining these buffers here allows them to be reused so there is less overhead when calling the function.
@@ -16,7 +18,7 @@ const BitMath = (() => {
             return (value) => {
                 float32Buffer[0] = value;
                 let integer = uint32Buffer[0];
-                integer = (integer + 0x3f76cf62) >>> 1;
+                integer = (integer + 0x3f76cf62) >>> 1; // I don't understand the magic number, but there it is.
                 uint32Buffer[0] = integer;
                 const float = float32Buffer[0];
 
@@ -27,29 +29,51 @@ const BitMath = (() => {
                 return 0.5 * (float + value / float);
             };
         })(),
+        // Returns the value if it is less than the threshold, otherwise returns the threshold.
         clampHigh(value, threshold) {
             const difference = value - threshold;
             return value - (difference & ~(difference >> 31));
         },
+        // Returns the value if it is greater than 0, otherwise returns 0.
         clampZero(value) {
             return value & ~(value >> 31);
         },
+        // Returns the floor of the float value, which returns the nearest whole integer that is closer to -infinity.
+        // -1.1 returns -2
+        //  1.9 returns  1
+        // -1   returns -1
+        //  1   returns  1
         floor(value) {
             const i = value | 0;
             return i - ((value < i) & 1);
         },
+        // Returns true if the value is negative.
         isNegative(value) {
             return (value >> 31) & 1;
         },
+        // Returns true if the value is not 0.
         isNotZero(value) {
             return (value | -value) >> 31 & 1;
         },
-        maximum(value1, value2) {
+        // Returns the maximum of the two values
+        maximum2(value1, value2) {
             return value1 ^ ((value1 ^ value2) & ((value1 - value2) >> 31));
         },
-        minimum(value1, value2) {
+        // Returns the maximum of the three values
+        maximum3(value1, value2, value3) {
+            const maximum2 = value1 ^ ((value1 ^ value2) & ((value1 - value2) >> 31));
+            return value3 ^ ((value3 ^ maximum2) & ((value3 - maximum2) >> 31));
+        },
+        // Returns the minimum of the two values
+        minimum2(value1, value2) {
             return value2 ^ ((value1 ^ value2) & ((value1 - value2) >> 31));
         },
+        // Returns the minimum of the three values
+        minimum3(value1, value2, value3) {
+            const minimum2 = value2 ^ ((value1 ^ value2) & ((value1 - value2) >> 31))
+            return value3 ^ ((minimum2 ^ value3) & ((minimum2 - value3) >> 31));
+        },
+        // Returns the value without the decimal part, essentially turning it into a whole integer.
         truncate(value) {
             return value | 0;
         }
