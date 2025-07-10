@@ -179,11 +179,13 @@ const Rasterizer = (() => {
             Raster.fillPoint(canvas.pixels, canvas.width, 10, 40, 0xffffffff);
             Raster.fillTriangle(canvas.pixels, canvas.width, 10, 60, 10, 40, mouseX - 1, mouseY, 0xff004000);
 
+            Raster.fillTransparentPixel(canvas.pixels, canvas.width, 1, 1, 0x80ffffff);
+            Raster.fillTransparentPixel(canvas.pixels, canvas.width, 1, 1, 0x80ffffff);
 
             let p = rotatePointsAroundCenter(triangle, triangleAngle);
             triangleAngle += 0.001;
-            console.log(p);
             Raster.fillTriangle(canvas.pixels, canvas.width, p[0][0], p[0][1], p[1][0], p[1][1], p[2][0], p[2][1], 0xffff0000);
+            
             //Raster.fillHorizontalLineClipped(canvas.pixels, canvas.width, canvas.height, -10, 99, 2000, 0xffffffff);
             //Raster.fillVerticalLineClipped(canvas.pixels, canvas.width, canvas.height, 99, 0, 99, 0xffffffff);
             Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvas.x, canvas.y, canvas.scale);

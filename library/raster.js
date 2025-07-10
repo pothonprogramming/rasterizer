@@ -314,8 +314,24 @@ const Raster = {
         for (let index = firstIndex; index < lastIndex; index++) pixels[index] = color;
     },
 
+    // This needs to be renamed to fillPixel, because points do not have area and cannot be filled.
     fillPoint(pixels, rasterWidth, pointX, pointY, color) {
         pixels[pointY * rasterWidth + pointX] = color;
+    },
+
+    // Colors are in aabbggrr format
+    fillTransparentPixel(pixels, raster_width, pixel_x, pixel_y, color) {
+        const index = pixel_y * raster_width + pixel_x;
+
+        const baseColor = pixels[index];
+        
+        const alpha = color >> 24;
+        const inverseAlpha = 255 - alpha;
+
+        const br = ((baseColor & 0x00ff00ff) * alpha + (color & 0x00ff00ff) * inverseAlpha) >> 8;
+        const ag = (((baseColor >> 8) & 0x00ff00ff) * alpha + ((color >> 8) & 0x00ff00ff) * inverseAlpha) >> 8;
+
+        pixels[index] = (ag << 8 & 0xff00ff00) | (br & 0x00ff00ff);
     },
 
     fillPointClipped(pixels, rasterWidth, rasterHeight, pointX, pointY, color) {
@@ -346,6 +362,7 @@ const Raster = {
                 pixels[pixelY * rasterWidth + pixelX] = color;
     },
 
+    // THIS NEEDS TO BE CLEANED UP AND RECOMMENTED
     // This method assumes clockwise point winding.
     // The right normal of each edge vector will be tested.
     // Any points that are to the right of all 3 edges will be drawn.
@@ -381,12 +398,12 @@ const Raster = {
 
         // Get the x and y offsets for each pixel test
         // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
-        const x0 = a0 < 0 ? 0 : 1;
-        const y0 = b0 < 0 ? 0 : 1;
-        const x1 = a1 < 0 ? 0 : 1;
-        const y1 = b1 < 0 ? 0 : 1;
-        const x2 = a2 < 0 ? 0 : 1;
-        const y2 = b2 < 0 ? 0 : 1;
+        const x0 = !(a0 >> 31); // a0 < 0 ? 0 : 1;
+        const y0 = !(b0 >> 31); // b0 < 0 ? 0 : 1;
+        const x1 = !(a1 >> 31); // a1 < 0 ? 0 : 1;
+        const y1 = !(b1 >> 31); // b1 < 0 ? 0 : 1;
+        const x2 = !(a2 >> 31); // a2 < 0 ? 0 : 1;
+        const y2 = !(b2 >> 31); // b2 < 0 ? 0 : 1;
 
         const yOffset0 = b0 - a0 * box_width;
         const yOffset1 = b1 - a1 * box_width;
@@ -396,15 +413,23 @@ const Raster = {
         let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
         let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
 
+        let index = box_top * rasterWidth + box_left;
+        const indexYStep = rasterWidth - box_width;
+
         for (let y = box_top; y < box_bottom; y++) {
+            
             for (let x = box_left; x < box_right; x++) {
                 // You can also OR the 3 values together and test sign
-                if (v0 > 0 && v1 > 0 && v2 > 0) pixels[y * rasterWidth + x] = color;
+                if ((v0 | v1 | v2) > 0) pixels[index] = color;
+
+                index ++;
 
                 v0 += a0;
                 v1 += a1;
                 v2 += a2;
             }
+
+            index += indexYStep;
 
             v0 += yOffset0;
             v1 += yOffset1;
