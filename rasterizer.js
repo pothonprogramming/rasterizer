@@ -2,8 +2,8 @@
 // Do not use non-portable techniques or libraries because logic is meant to be rewritten to C.
 const Rasterizer = (() => {
 
-    const MAX_RASTER_WIDTH = 640;
-    const MAX_RASTER_HEIGHT = 640;
+    const MAX_RASTER_WIDTH = 768;
+    const MAX_RASTER_HEIGHT = 768;
 
     ////////////////
     // INITIALIZE //
@@ -14,39 +14,39 @@ const Rasterizer = (() => {
     const mouse = Input.createMouseInput();
 
     const canvas = {
-        pixels:new Uint32Array(MAX_RASTER_WIDTH*MAX_RASTER_HEIGHT), // Initialize array to max size
-        pixelCount:0,
-        x:10,
-        y:10,
-        width:0,        
-        height:0,
-        scale:6
+        pixels: new Uint32Array(MAX_RASTER_WIDTH * MAX_RASTER_HEIGHT), // Initialize array to max size
+        pixelCount: 0,
+        x: 20,
+        y: 20,
+        width: 0,
+        height: 0,
+        scale: 7
     };
 
     const display = {
-        pixels:new Uint32Array(MAX_RASTER_WIDTH*MAX_RASTER_HEIGHT),
-        pixelCount:0,
-        width:0,
-        height:0
+        pixels: new Uint32Array(MAX_RASTER_WIDTH * MAX_RASTER_HEIGHT),
+        pixelCount: 0,
+        width: 0,
+        height: 0
     };
 
     const toolbar = {
-        pixels:new Uint32Array(MAX_RASTER_WIDTH*MAX_RASTER_HEIGHT),
-        pixelCount:0,
-        x:0,
-        y:0,
-        width:0,
-        height:0,
-        scale:1,
-        selectedColor:0xff000000
+        pixels: new Uint32Array(MAX_RASTER_WIDTH * MAX_RASTER_HEIGHT),
+        pixelCount: 0,
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        scale: 1,
+        selectedColor: 0xff000000
     };
 
-    const triangle = [[50, 50], [80, 50], [65, 80]];
+    const triangle = [[70, 70], [100, 70], [85, 100]];
     let triangleAngle = 0;
 
     function rotatePointsAroundCenter(points, angleRadians) {
         if (!points.length) return [];
-    
+
         // Step 1: Calculate the centroid (average x and y)
         let sumX = 0, sumY = 0;
         for (const [x, y] of points) {
@@ -55,27 +55,27 @@ const Rasterizer = (() => {
         }
         const centerX = sumX / points.length;
         const centerY = sumY / points.length;
-    
+
         // Step 2: Rotate each point around the centroid
         const cosA = Math.cos(angleRadians);
         const sinA = Math.sin(angleRadians);
         const rotated = points.map(([x, y]) => {
             const dx = x - centerX;
             const dy = y - centerY;
-    
+
             const rx = dx * cosA - dy * sinA + centerX;
             const ry = dx * sinA + dy * cosA + centerY;
-    
+
             return [rx, ry];
         });
-    
+
         return rotated;
     }
 
     resizeRaster(canvas, 100, 100);
     Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
 
-    resizeRaster(display, 640, 640);
+    resizeRaster(display, 768, 768);
 
     resizeRaster(toolbar, 320, 160);
 
@@ -118,11 +118,14 @@ const Rasterizer = (() => {
         const y3 = BitMath.floor(y + 0.25 * scale);
         const x4 = BitMath.floor(x + 0.25 * scale);
         const y4 = BitMath.floor(y + 1 * scale);
-        Raster.drawLineSegment(targetPixels, targetRasterWidth, x0, y0, x1, y1, color);
+        /*Raster.drawLineSegment(targetPixels, targetRasterWidth, x0, y0, x1, y1, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x1, y1, x2, y2, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x2, y2, x3, y3, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x3, y3, x4, y4, color);
-        Raster.drawLineSegment(targetPixels, targetRasterWidth, x4, y4, x0, y0, color); 
+        Raster.drawLineSegment(targetPixels, targetRasterWidth, x4, y4, x0, y0, color);*/
+        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x1, y1, x2, y2, color);
+        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x2, y2, x3, y3, color);
+        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x3, y3, x4, y4, color);
     }
 
     return {
@@ -144,31 +147,55 @@ const Rasterizer = (() => {
             //Raster.copyPixelsScaled(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, canvasPosition.x, canvasPosition.y, canvasScale);
             //Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvasPosition.x + 180, canvasPosition.y + 40, 20);
 
+            const mouseX = BitMath.floor((mouse.x - canvas.x) / canvas.scale);
+            const mouseY = BitMath.floor((mouse.y - canvas.y) / canvas.scale);
+
             Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
-            drawPencilIcon(canvas.pixels, canvas.width, 10, 10, 12, 0x00000000);
+            drawPencilIcon(canvas.pixels, canvas.width, 5, 5, 12, 0xff00ffff);
             //Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
             //Raster.drawLineSegmentClipped(canvas.pixels, canvas.width, canvas.height, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 50, 50, 0xffffffff);
-            
-            Raster.fillTriangle(canvas.pixels, canvas.width, 10, 10, 25, 10, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xff00ff00);
-            Raster.fillPoint(canvas.pixels, canvas.width, 90, 30, 0xffffffff);
-            Raster.fillPoint(canvas.pixels, canvas.width, 10, 10, 0xffffffff);
-            Raster.fillPoint(canvas.pixels, canvas.width, 25, 10, 0xffffffff);
 
-            let p = rotatePointsAroundCenter(triangle, triangleAngle += 0.005);
+            // Top
+            Raster.fillPoint(canvas.pixels, canvas.width, mouseX, mouseY - 1, 0xffffffff);
+            Raster.fillPoint(canvas.pixels, canvas.width, 40, 10, 0xffffffff);
+            Raster.fillPoint(canvas.pixels, canvas.width, 60, 10, 0xffffffff);
+            Raster.fillTriangle(canvas.pixels, canvas.width, 40, 10, 60, 10, mouseX, mouseY - 1, 0xff00ff00);
+
+            // Right
+            Raster.fillPoint(canvas.pixels, canvas.width, mouseX + 1, mouseY, 0xffc0c0c0);
+            Raster.fillPoint(canvas.pixels, canvas.width, 90, 60, 0xffffffff);
+            Raster.fillPoint(canvas.pixels, canvas.width, 90, 40, 0xffffffff);
+            Raster.fillTriangle(canvas.pixels, canvas.width, 90, 60, mouseX + 1, mouseY, 90, 40, 0xff00c000);
+
+            // Bottom
+            Raster.fillPoint(canvas.pixels, canvas.width, mouseX, mouseY + 1, 0xff808080);
+            Raster.fillPoint(canvas.pixels, canvas.width, 40, 90, 0xffffffff);
+            Raster.fillPoint(canvas.pixels, canvas.width, 60, 90, 0xffffffff);
+            Raster.fillTriangle(canvas.pixels, canvas.width, 40, 90, mouseX, mouseY + 1, 60, 90, 0xff008000);
+
+            // Left
+            Raster.fillPoint(canvas.pixels, canvas.width, mouseX - 1, mouseY, 0xff404040);
+            Raster.fillPoint(canvas.pixels, canvas.width, 10, 60, 0xffffffff);
+            Raster.fillPoint(canvas.pixels, canvas.width, 10, 40, 0xffffffff);
+            Raster.fillTriangle(canvas.pixels, canvas.width, 10, 60, 10, 40, mouseX - 1, mouseY, 0xff004000);
+
+
+            let p = rotatePointsAroundCenter(triangle, triangleAngle);
+            triangleAngle += 0.001;
             console.log(p);
             Raster.fillTriangle(canvas.pixels, canvas.width, p[0][0], p[0][1], p[1][0], p[1][1], p[2][0], p[2][1], 0xffff0000);
             //Raster.fillHorizontalLineClipped(canvas.pixels, canvas.width, canvas.height, -10, 99, 2000, 0xffffffff);
             //Raster.fillVerticalLineClipped(canvas.pixels, canvas.width, canvas.height, 99, 0, 99, 0xffffffff);
             Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvas.x, canvas.y, canvas.scale);
 
-            
+
 
             // Draw the toolbar
             //Raster.fillRectangleClipped(toolbar.pixels,toolbar.width,toolbar.height,0, 0, toolbar.width, toolbar.height, toolbar.selectedColor);
             //Raster.copyPixelsScaledClipped(toolbar.pixels, toolbar.width, toolbar.height, display.pixels, display.width, display.height, toolbar.x, toolbar.y, toolbar.scale);
 
             // Horizontal
-            
+
             //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 0, 100, 0xffffffff);
             // Vertical
             //Raster.drawLineSegment(display.pixels, display.width, 100, 100, 100, 200, 0xffffffff);
@@ -191,7 +218,7 @@ const Rasterizer = (() => {
                     plotPoint(canvas.pixels, canvas.width, canvas.height, canvas.x, canvas.y, canvas.scale);
                 }
 
-            } 
+            }
 
         },
         updateMousePosition(x, y) {

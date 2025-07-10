@@ -29,6 +29,11 @@ const BitMath = (() => {
                 return 0.5 * (float + value / float);
             };
         })(),
+        // Returns the ceiling of the float value, which returns the nearest whole integer that is closer to +infinity.
+        ceiling(value) {
+            const i = value | 0;
+            return i + ((value > i) & 1);
+        },
         // Returns the value if it is less than the threshold, otherwise returns the threshold.
         clampHigh(value, threshold) {
             const difference = value - threshold;
