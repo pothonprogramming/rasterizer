@@ -53,9 +53,18 @@ const BitMath = (() => {
             return i - ((value < i) & 1);
         },
         // Returns true if the value is negative.
-        isNegative(value) {
+        isNegativeInteger(value) {
             return (value >> 31) & 1;
         },
+        isNegativeFloat: (() => {
+            const float64Array = new Float64Array(1);
+            const uInt64Array = new BigUint64Array(float64Array.buffer);
+
+            return (value) => {
+                float64Array[0] = value;
+                return Boolean((uInt64Array[0] >> 63n) & 1n);
+            }
+        })(),
         // Returns true if the value is not 0.
         isNotZero(value) {
             return (value | -value) >> 31 & 1;
@@ -77,6 +86,20 @@ const BitMath = (() => {
         minimum3(value1, value2, value3) {
             const minimum2 = value2 ^ ((value1 ^ value2) & ((value1 - value2) >> 31))
             return value3 ^ ((minimum2 ^ value3) & ((minimum2 - value3) >> 31));
+        },
+        // Rounding only needs to happen with floats. This function handles floating point numbers.
+        round: (() => {
+            const float64Array = new Float64Array(1);
+            const uInt64Array = new BigUint64Array(float64Array.buffer);
+
+            return (value) => {
+                float64Array[0] = value;
+                return (value + 0.5 - Number((uInt64Array[0] >> 63n) & 1n)) | 0;
+            };
+        })(),
+        // Returns the truncated value after adding 0.5, essentially rounding to the nearest whole number.
+        round(value) {
+            return (value + 0.5 - ((value >> 31) & 1)) | 0;
         },
         // Returns the value without the decimal part, essentially turning it into a whole integer.
         truncate(value) {

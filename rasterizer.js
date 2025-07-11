@@ -109,23 +109,28 @@ const Rasterizer = (() => {
 
     function drawPencilIcon(targetPixels, targetRasterWidth, x, y, scale, color) {
         const x0 = x;
-        const y0 = BitMath.floor(y + 1 * scale);
+        const y0 = BitMath.round(y + 1 * scale);
         const x1 = x;
-        const y1 = BitMath.floor(y + 0.75 * scale);
-        const x2 = BitMath.floor(x + 0.75 * scale);
+        const y1 = BitMath.round(y + 0.75 * scale);
+        const x2 = BitMath.round(x + 0.75 * scale);
         const y2 = y;
-        const x3 = BitMath.floor(x + 1 * scale);
-        const y3 = BitMath.floor(y + 0.25 * scale);
-        const x4 = BitMath.floor(x + 0.25 * scale);
-        const y4 = BitMath.floor(y + 1 * scale);
+        const x3 = BitMath.round(x + 1 * scale);
+        const y3 = BitMath.round(y + 0.25 * scale);
+        const x4 = BitMath.round(x + 0.25 * scale);
+        const y4 = BitMath.round(y + 1 * scale);
         /*Raster.drawLineSegment(targetPixels, targetRasterWidth, x0, y0, x1, y1, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x1, y1, x2, y2, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x2, y2, x3, y3, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x3, y3, x4, y4, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x4, y4, x0, y0, color);*/
-        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x1, y1, x2, y2, color);
-        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x2, y2, x3, y3, color);
-        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x3, y3, x4, y4, color);
+        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x1, y1, x4, y4, color);
+        Raster.fillTriangle(targetPixels, targetRasterWidth, x1, y1, x2, y2, x4, y4, color /2);
+        Raster.fillTriangle(targetPixels, targetRasterWidth, x2, y2, x3, y3, x4, y4, color /3);
+        Raster.fillPoint(targetPixels, targetRasterWidth, x0, y0, 0xffffffff);
+        Raster.fillPoint(targetPixels, targetRasterWidth, x1, y1, 0xffffffff);
+        Raster.fillPoint(targetPixels, targetRasterWidth, x2, y2, 0xffffffff);
+        Raster.fillPoint(targetPixels, targetRasterWidth, x3, y3, 0xffffffff);
+        Raster.fillPoint(targetPixels, targetRasterWidth, x4, y4, 0xffffffff);
     }
 
     return {
@@ -151,7 +156,7 @@ const Rasterizer = (() => {
             const mouseY = BitMath.floor((mouse.y - canvas.y) / canvas.scale);
 
             Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
-            drawPencilIcon(canvas.pixels, canvas.width, 5, 5, 12, 0xff00ffff);
+            drawPencilIcon(canvas.pixels, canvas.width, 5, 5, 20, 0xff00ffff);
             //Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
             //Raster.drawLineSegmentClipped(canvas.pixels, canvas.width, canvas.height, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 50, 50, 0xffffffff);
 
