@@ -4,6 +4,10 @@
 
 const Raster = {
 
+    // NEED TO UPDATE: clipping functions should take clip rect properties instead of just clipping to the target raster.
+    // This is a more flexible approach and will allow clipping to an arbitrary axis aligned rect within the raster.
+
+
     copyOpaquePixels(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY) {
         const bottom = targetY + sourceHeight;
         const right = targetX + sourceWidth;
@@ -275,22 +279,47 @@ const Raster = {
         for (let i = 0; i < pixelCount; i++) pixels[i] = color;
     },
 
-    // This isn't working yet.
-    fillCircle(pixels, rasterWidth, circleX, circleY, circleRadius, color) {
-        const step = Math_PI * 0.0625;
-        const cos = Math.cos(step);
-        const sin = Math.sin(step);
+    fillAxisAlignedRectangle(pixels, rasterWidth, rectangleX, rectangleY, rectangleWidth, rectangleHeight, color) {
+        let bottom = rectangleY + rectangleHeight;
+        let right = rectangleX + rectangleWidth;
 
-        let pixelX = circleRadius;
-        let pixelY = 0;
-        let pointCount = Math.ceil(Math_2PI / step);
+        for (let pixelY = rectangleY; pixelY < bottom; pixelY++)
+            for (let pixelX = rectangleX; pixelX < right; pixelX++)
+                pixels[pixelY * rasterWidth + pixelX] = color;
+    },
 
-        for (let i = 0; i < pointCount; i++) {
-            pixels[(pixelY + circleY) * rasterWidth + pixelX + circleX] = color;
-            let x = pixelX * cos - pixelY * sin;
-            let y = pixelX * sin + pixelY * cos;
-            pixelX = Math.round(x);
-            pixelY = Math.round(y);
+    fillAxisAlignedRectangleClipped(pixels, rasterWidth, rasterHeight, rectangleX, rectangleY, rectangleWidth, rectangleHeight, color) {
+        let left = BitMath.clampZero(rectangleX);
+        let right = BitMath.clampHigh(rectangleX + rectangleWidth, rasterWidth);
+        if (left >= right) return;
+
+        let top = BitMath.clampZero(rectangleY);
+        let bottom = BitMath.clampHigh(rectangleY + rectangleHeight, rasterHeight);
+        if (top >= bottom) return;
+
+        for (let pixelY = top; pixelY < bottom; pixelY++)
+            for (let pixelX = left; pixelX < right; pixelX++)
+                pixels[pixelY * rasterWidth + pixelX] = color;
+    },
+
+    // This isn't working yet. It still needs to draw all pixels that overlap the circle and it's not doing that yet.
+    // This needs to be optimized as well.
+    fillCircle(pixels, rasterWidth, circle_x, circle_y, circle_radius, color) {
+        const box_bottom = BitMath.ceiling(circle_y + circle_radius);
+        const box_left = BitMath.floor(circle_x - circle_radius);
+        const box_right = BitMath.ceiling(circle_x + circle_radius);
+        const box_top = BitMath.floor(circle_y - circle_radius);
+        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+        const circleRadiusSquared = circle_radius * circle_radius;
+
+        for (let y = box_top; y < box_bottom; y ++) {
+            for (let x = box_left; x < box_right; x ++) {
+                const vector_x = x - circle_x;
+                const vector_y = y - circle_y;
+
+                if (vector_x * vector_x + vector_y * vector_y < circleRadiusSquared) pixels[y * rasterWidth + x] = color;
+            }
         }
     },
 
@@ -315,8 +344,19 @@ const Raster = {
     },
 
     // This needs to be renamed to fillPixel, because points do not have area and cannot be filled.
-    fillPoint(pixels, rasterWidth, pointX, pointY, color) {
+    fillPixel(pixels, rasterWidth, pointX, pointY, color) {
         pixels[pointY * rasterWidth + pointX] = color;
+    },
+
+    fillPixelClipped(pixels, rasterWidth, rasterHeight, pointX, pointY, color) {
+        if (pointX < 0 || pointY < 0 || pointX > rasterWidth || pointY > rasterHeight) return;
+        pixels[pointY * rasterWidth + pointX] = color;
+    },
+
+    // Used to draw a rectangle that may be rotated.
+    // This method can also be used to draw a thick line.
+    fillRectangle(pixels, raster_width, x0, y0, x1, y1, x2, y2, x3, y3, color) {
+
     },
 
     // Colors are in aabbggrr format
@@ -324,7 +364,7 @@ const Raster = {
         const index = pixel_y * raster_width + pixel_x;
 
         const baseColor = pixels[index];
-        
+
         const alpha = color >> 24;
         const inverseAlpha = 255 - alpha;
 
@@ -334,32 +374,69 @@ const Raster = {
         pixels[index] = (ag << 8 & 0xff00ff00) | (br & 0x00ff00ff);
     },
 
-    fillPointClipped(pixels, rasterWidth, rasterHeight, pointX, pointY, color) {
-        if (pointX < 0 || pointY < 0 || pointX > rasterWidth || pointY > rasterHeight) return;
-        pixels[pointY * rasterWidth + pointX] = color;
-    },
+    fillTransparentTriangle(pixels, rasterWidth, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
+        // The bounding box of the triangle
+        const box_bottom = BitMath.ceiling(BitMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
+        const box_left = BitMath.floor(BitMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_right = BitMath.ceiling(BitMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_top = BitMath.floor(BitMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
+        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
 
-    fillRectangle(pixels, rasterWidth, rectangleX, rectangleY, rectangleWidth, rectangleHeight, color) {
-        let bottom = rectangleY + rectangleHeight;
-        let right = rectangleX + rectangleWidth;
+        // edge0
+        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+        // edge1
+        const a1 = triangle_y1 - triangle_y2;
+        const b1 = triangle_x2 - triangle_x1;
+        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+        // edge2
+        const a2 = triangle_y2 - triangle_y0;
+        const b2 = triangle_x0 - triangle_x2;
+        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
 
-        for (let pixelY = rectangleY; pixelY < bottom; pixelY++)
-            for (let pixelX = rectangleX; pixelX < right; pixelX++)
-                pixels[pixelY * rasterWidth + pixelX] = color;
-    },
+        const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
+        const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
+        const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
+        const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
+        const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
+        const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
 
-    fillRectangleClipped(pixels, rasterWidth, rasterHeight, rectangleX, rectangleY, rectangleWidth, rectangleHeight, color) {
-        let left = BitMath.clampZero(rectangleX);
-        let right = BitMath.clampHigh(rectangleX + rectangleWidth, rasterWidth);
-        if (left >= right) return;
+        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
+        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
 
-        let top = BitMath.clampZero(rectangleY);
-        let bottom = BitMath.clampHigh(rectangleY + rectangleHeight, rasterHeight);
-        if (top >= bottom) return;
+        // The y increment to add to the edge test result on each y iteration
+        const yOffset0 = b0 - a0 * box_width;
+        const yOffset1 = b1 - a1 * box_width;
+        const yOffset2 = b2 - a2 * box_width;
 
-        for (let pixelY = top; pixelY < bottom; pixelY++)
-            for (let pixelX = left; pixelX < right; pixelX++)
-                pixels[pixelY * rasterWidth + pixelX] = color;
+        // Premultiplied color:
+        color = Color.premultiplyColor(color);
+
+        // Set up the first index and row step.
+        let index = box_top * rasterWidth + box_left;
+        const indexYStep = rasterWidth - box_width;
+
+        for (let y = box_top; y < box_bottom; y++) {
+
+            for (let x = box_left; x < box_right; x++) {
+                if (v0 > 0 && v1 > 0 && v2 > 0) pixels[index] = Color.blendOverOpaqueBase(color, pixels[index]);
+
+                index++;
+
+                v0 += a0;
+                v1 += a1;
+                v2 += a2;
+            }
+
+            index += indexYStep;
+
+            v0 += yOffset0;
+            v1 += yOffset1;
+            v2 += yOffset2;
+        }
     },
 
     // This method assumes clockwise point winding.
@@ -378,7 +455,7 @@ const Raster = {
         // c is the negative dot product of the point (x, y) and the normal (a, b).
         // When the point (x, y) is on the line, the equation will yield 0.
         // When the point (x, y) is to the right or left of the line, the equation will yield a positive or negative value.
-        
+
         // Set up the coefficient values for each line segment in the triangle.
         // The right normal of a vector, v (p1.x - p0.x, p1.y - p0.y) is (-vy, vx)
         // edge0
@@ -424,13 +501,13 @@ const Raster = {
         const indexYStep = rasterWidth - box_width;
 
         for (let y = box_top; y < box_bottom; y++) {
-            
+
             for (let x = box_left; x < box_right; x++) {
                 // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
                 // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
                 if (v0 > 0 && v1 > 0 && v2 > 0) pixels[index] = color;
 
-                index ++;
+                index++;
 
                 v0 += a0;
                 v1 += a1;

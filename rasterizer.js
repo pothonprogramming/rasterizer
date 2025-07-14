@@ -104,10 +104,10 @@ const Rasterizer = (() => {
 
     function plotPoint(canvasPixels, canvasWidth, canvasHeight, canvasX, canvasY, canvasScale = 1) {
         console.log(BitMath.floor((mouse.x - canvasX) / canvasScale), BitMath.floor((mouse.y - canvasY) / canvasScale));
-        Raster.fillPointClipped(canvasPixels, canvasWidth, canvasHeight, BitMath.floor((mouse.x - canvasX) / canvasScale), BitMath.floor((mouse.y - canvasY) / canvasScale), 0xffffffff);
+        Raster.fillPixelClipped(canvasPixels, canvasWidth, canvasHeight, BitMath.floor((mouse.x - canvasX) / canvasScale), BitMath.floor((mouse.y - canvasY) / canvasScale), 0xffffffff);
     }
 
-    function drawPencilIcon(targetPixels, targetRasterWidth, x, y, scale, color) {
+    function drawPencilIcon(targetPixels, targetRasterWidth, x, y, scale, color0, color1, color2) {
         const x0 = x;
         const y0 = BitMath.round(y + 1 * scale);
         const x1 = x;
@@ -123,14 +123,14 @@ const Rasterizer = (() => {
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x2, y2, x3, y3, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x3, y3, x4, y4, color);
         Raster.drawLineSegment(targetPixels, targetRasterWidth, x4, y4, x0, y0, color);*/
-        Raster.fillTriangle(targetPixels, targetRasterWidth, x0, y0, x1, y1, x4, y4, color);
-        Raster.fillTriangle(targetPixels, targetRasterWidth, x1, y1, x2, y2, x4, y4, color /2);
-        Raster.fillTriangle(targetPixels, targetRasterWidth, x2, y2, x3, y3, x4, y4, color /3);
-        Raster.fillPoint(targetPixels, targetRasterWidth, x0, y0, 0xffffffff);
-        Raster.fillPoint(targetPixels, targetRasterWidth, x1, y1, 0xffffffff);
-        Raster.fillPoint(targetPixels, targetRasterWidth, x2, y2, 0xffffffff);
-        Raster.fillPoint(targetPixels, targetRasterWidth, x3, y3, 0xffffffff);
-        Raster.fillPoint(targetPixels, targetRasterWidth, x4, y4, 0xffffffff);
+        Raster.fillTransparentTriangle(targetPixels, targetRasterWidth, x0, y0, x1, y1, x4, y4, color0);
+        Raster.fillTransparentTriangle(targetPixels, targetRasterWidth, x1, y1, x2, y2, x4, y4, color1);
+        Raster.fillTransparentTriangle(targetPixels, targetRasterWidth, x2, y2, x3, y3, x4, y4, color2);
+        Raster.fillPixel(targetPixels, targetRasterWidth, x0, y0, 0xffffffff);
+        Raster.fillPixel(targetPixels, targetRasterWidth, x1, y1, 0xffffffff);
+        Raster.fillPixel(targetPixels, targetRasterWidth, x2, y2, 0xffffffff);
+        Raster.fillPixel(targetPixels, targetRasterWidth, x3, y3, 0xffffffff);
+        Raster.fillPixel(targetPixels, targetRasterWidth, x4, y4, 0xffffffff);
     }
 
     return {
@@ -156,33 +156,37 @@ const Rasterizer = (() => {
             const mouseY = BitMath.floor((mouse.y - canvas.y) / canvas.scale);
 
             Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
-            drawPencilIcon(canvas.pixels, canvas.width, 5, 5, 20, 0xff00ffff);
             //Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
             //Raster.drawLineSegmentClipped(canvas.pixels, canvas.width, canvas.height, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 50, 50, 0xffffffff);
 
             // Top
-            Raster.fillPoint(canvas.pixels, canvas.width, mouseX, mouseY - 1, 0xffffffff);
-            Raster.fillPoint(canvas.pixels, canvas.width, 40, 10, 0xffffffff);
-            Raster.fillPoint(canvas.pixels, canvas.width, 60, 10, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, mouseX, mouseY - 1, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, 40, 10, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, 60, 10, 0xffffffff);
             Raster.fillTriangle(canvas.pixels, canvas.width, 40, 10, 60, 10, mouseX, mouseY - 1, 0xff00ff00);
 
             // Right
-            Raster.fillPoint(canvas.pixels, canvas.width, mouseX + 1, mouseY, 0xffc0c0c0);
-            Raster.fillPoint(canvas.pixels, canvas.width, 90, 60, 0xffffffff);
-            Raster.fillPoint(canvas.pixels, canvas.width, 90, 40, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, mouseX + 1, mouseY, 0xffc0c0c0);
+            Raster.fillPixel(canvas.pixels, canvas.width, 90, 60, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, 90, 40, 0xffffffff);
             Raster.fillTriangle(canvas.pixels, canvas.width, 90, 60, mouseX + 1, mouseY, 90, 40, 0xff00c000);
 
             // Bottom
-            Raster.fillPoint(canvas.pixels, canvas.width, mouseX, mouseY + 1, 0xff808080);
-            Raster.fillPoint(canvas.pixels, canvas.width, 40, 90, 0xffffffff);
-            Raster.fillPoint(canvas.pixels, canvas.width, 60, 90, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, mouseX, mouseY + 1, 0xff808080);
+            Raster.fillPixel(canvas.pixels, canvas.width, 40, 90, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, 60, 90, 0xffffffff);
             Raster.fillTriangle(canvas.pixels, canvas.width, 40, 90, mouseX, mouseY + 1, 60, 90, 0xff008000);
 
             // Left
-            Raster.fillPoint(canvas.pixels, canvas.width, mouseX - 1, mouseY, 0xff404040);
-            Raster.fillPoint(canvas.pixels, canvas.width, 10, 60, 0xffffffff);
-            Raster.fillPoint(canvas.pixels, canvas.width, 10, 40, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, mouseX - 1, mouseY, 0xff404040);
+            Raster.fillPixel(canvas.pixels, canvas.width, 10, 60, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, 10, 40, 0xffffffff);
             Raster.fillTriangle(canvas.pixels, canvas.width, 10, 60, 10, 40, mouseX - 1, mouseY, 0xff004000);
+
+            drawPencilIcon(canvas.pixels, canvas.width, 5, 5, 20, 0x80ff0000, 0x8000ff00, 0x8000ffff);
+
+            Raster.fillCircle(canvas.pixels,canvas.width, 90, 10, 5, 0xff00ff00);
+            Raster.fillPixel(canvas.pixels, canvas.width, 90, 10, 0xffffffff);
 
             Raster.fillTransparentPixel(canvas.pixels, canvas.width, 1, 1, 0x80ffffff);
             Raster.fillTransparentPixel(canvas.pixels, canvas.width, 1, 1, 0x80ffffff);
