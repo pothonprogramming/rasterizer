@@ -302,24 +302,138 @@ const Raster = {
                 pixels[pixelY * rasterWidth + pixelX] = color;
     },
 
-    // This isn't working yet. It still needs to draw all pixels that overlap the circle and it's not doing that yet.
-    // This needs to be optimized as well.
+    // This can be optimized. Circles are symmetrical, so I only need to do 1/2, 1/4, or 1/8th the math to calculate points.
+    // It's probably best to access memory contiguously if possible.
     fillCircle(pixels, rasterWidth, circle_x, circle_y, circle_radius, color) {
         const box_bottom = BitMath.ceiling(circle_y + circle_radius);
         const box_left = BitMath.floor(circle_x - circle_radius);
         const box_right = BitMath.ceiling(circle_x + circle_radius);
         const box_top = BitMath.floor(circle_y - circle_radius);
-        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
 
         const circleRadiusSquared = circle_radius * circle_radius;
 
-        for (let y = box_top; y < box_bottom; y ++) {
-            for (let x = box_left; x < box_right; x ++) {
-                const vector_x = x - circle_x;
-                const vector_y = y - circle_y;
+        // Set up the first index and row step.
+        let index = box_top * rasterWidth + box_left;
+        const indexYStep = rasterWidth - box_right + box_left;
 
-                if (vector_x * vector_x + vector_y * vector_y < circleRadiusSquared) pixels[y * rasterWidth + x] = color;
+        // You could also break these loops into different quadrants and draw one quadrant at a time.
+        // This would get rid of the pixelEdge branches, but it would also lead to a lot of duplicate code. Not sure which is better.
+        for (let y = box_top; y < box_bottom; y ++) {
+            const pixelEdgeY = y < circle_y ? y + 1 : y; // Test the edge that has the least magnitude along the vector
+            const vector_y = pixelEdgeY - circle_y;
+            const vectorYSquared = vector_y * vector_y;
+            for (let x = box_left; x < box_right; x ++) {
+                const pixelEdgeX = x < circle_x ? x + 1 : x; // Test the edge that has the least magnitude along the vector
+                const vector_x = pixelEdgeX - circle_x;
+                if (vector_x * vector_x + vectorYSquared < circleRadiusSquared) pixels[index] = color;
+                index ++;
             }
+            index += indexYStep;
+        }
+        
+    },
+
+    // Running a point in circle test for each point isn't the most efficient way to render a filled circle on the CPU,
+    // but this approach lends itself very nicely to clipping, because it's easy to iterate over a rectangular region to get each test point.
+    fillClippedCircle(pixels, rasterWidth, clip_left, clip_top, clip_right, clip_bottom, circle_x, circle_y, circle_radius, color) {
+        const box_bottom = BitMath.minimum2(BitMath.ceiling(circle_y + circle_radius), clip_bottom);
+        const box_left = BitMath.maximum2(BitMath.floor(circle_x - circle_radius), clip_left);
+        const box_right = BitMath.minimum2(BitMath.ceiling(circle_x + circle_radius), clip_right);
+        const box_top = BitMath.maximum2(BitMath.floor(circle_y - circle_radius), clip_top);
+
+        const circleRadiusSquared = circle_radius * circle_radius;
+
+        // Set up the first index and row step.
+        let index = box_top * rasterWidth + box_left;
+        const indexYStep = rasterWidth - box_right + box_left;
+
+        // You could also break these loops into different quadrants and draw one quadrant at a time.
+        // This would get rid of the pixelEdge branches, but it would also lead to a lot of duplicate code. Not sure which is better.
+        for (let y = box_top; y < box_bottom; y ++) {
+            const pixelEdgeY = y < circle_y ? y + 1 : y; // Test the edge that has the least magnitude along the vector
+            const vector_y = pixelEdgeY - circle_y;
+            const vectorYSquared = vector_y * vector_y;
+            for (let x = box_left; x < box_right; x ++) {
+                const pixelEdgeX = x < circle_x ? x + 1 : x; // Test the edge that has the least magnitude along the vector
+                const vector_x = pixelEdgeX - circle_x;
+                if (vector_x * vector_x + vectorYSquared < circleRadiusSquared) pixels[index] = color;
+                index ++;
+            }
+            index += indexYStep;
+        }
+    },
+
+    // Only fills the pixel if it is inside the clip boundaries.
+    // These boundaries should never surpass the raster width and height.
+    // pixel_x and pixel_y must be an integer, not a float.
+    fillClippedPixel(pixels, rasterWidth, clip_left, clip_top, clip_right, clip_bottom, pixel_x, pixel_y, color) {
+        if (pixel_x < clip_left || pixel_y < clip_top || pixel_x > clip_right || pixel_y > clip_bottom) return;
+        pixels[pixel_y * rasterWidth + pixel_x] = color;
+    },
+
+    fillClippedTriangle(pixels, rasterWidth, clip_left, clip_top, clip_right, clip_bottom, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
+        // The bounding box of the triangle
+        const box_bottom = BitMath.minimum2(BitMath.ceiling(BitMath.maximum3(triangle_y0, triangle_y1, triangle_y2)), clip_bottom);
+        const box_left = BitMath.maximum2(BitMath.floor(BitMath.minimum3(triangle_x0, triangle_x1, triangle_x2)), clip_left);
+        const box_right = BitMath.minimum2(BitMath.ceiling(BitMath.maximum3(triangle_x0, triangle_x1, triangle_x2)), clip_right);
+        const box_top = BitMath.maximum2(BitMath.floor(BitMath.minimum3(triangle_y0, triangle_y1, triangle_y2)), clip_top);
+        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+        // edge0
+        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+        // edge1
+        const a1 = triangle_y1 - triangle_y2;
+        const b1 = triangle_x2 - triangle_x1;
+        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+        // edge2
+        const a2 = triangle_y2 - triangle_y0;
+        const b2 = triangle_x0 - triangle_x2;
+        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+        // Get the x and y offsets for each pixel test
+        // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
+        const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
+        const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
+        const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
+        const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
+        const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
+        const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
+
+        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
+        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+
+        // The y increment to add to the edge test result on each y iteration
+        const yOffset0 = b0 - a0 * box_width;
+        const yOffset1 = b1 - a1 * box_width;
+        const yOffset2 = b2 - a2 * box_width;
+
+        // Set up the first index and row step.
+        let index = box_top * rasterWidth + box_left;
+        const indexYStep = rasterWidth - box_width;
+
+        for (let y = box_top; y < box_bottom; y++) {
+
+            for (let x = box_left; x < box_right; x++) {
+                // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
+                // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
+                if (v0 > 0 && v1 > 0 && v2 > 0) pixels[index] = color;
+
+                index++;
+
+                v0 += a0;
+                v1 += a1;
+                v2 += a2;
+            }
+
+            index += indexYStep;
+
+            v0 += yOffset0;
+            v1 += yOffset1;
+            v2 += yOffset2;
         }
     },
 
@@ -343,14 +457,9 @@ const Raster = {
         for (let index = firstIndex; index < lastIndex; index++) pixels[index] = color;
     },
 
-    // This needs to be renamed to fillPixel, because points do not have area and cannot be filled.
-    fillPixel(pixels, rasterWidth, pointX, pointY, color) {
-        pixels[pointY * rasterWidth + pointX] = color;
-    },
-
-    fillPixelClipped(pixels, rasterWidth, rasterHeight, pointX, pointY, color) {
-        if (pointX < 0 || pointY < 0 || pointX > rasterWidth || pointY > rasterHeight) return;
-        pixels[pointY * rasterWidth + pointX] = color;
+    // pixel_x and pixel_y must be integers, not floats.
+    fillPixel(pixels, rasterWidth, pixel_x, pixel_y, color) {
+        pixels[pixel_y * rasterWidth + pixel_x] = color;
     },
 
     // Used to draw a rectangle that may be rotated.
@@ -401,6 +510,97 @@ const Raster = {
         const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
         const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
         const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
+
+        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
+        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+
+        // The y increment to add to the edge test result on each y iteration
+        const yOffset0 = b0 - a0 * box_width;
+        const yOffset1 = b1 - a1 * box_width;
+        const yOffset2 = b2 - a2 * box_width;
+
+        // Premultiplied color:
+        color = Color.premultiplyColor(color);
+
+        // Set up the first index and row step.
+        let index = box_top * rasterWidth + box_left;
+        const indexYStep = rasterWidth - box_width;
+
+        for (let y = box_top; y < box_bottom; y++) {
+
+            for (let x = box_left; x < box_right; x++) {
+                if (v0 > 0 && v1 > 0 && v2 > 0) pixels[index] = Color.blendOverOpaqueBase(color, pixels[index]);
+
+                index++;
+
+                v0 += a0;
+                v1 += a1;
+                v2 += a2;
+            }
+
+            index += indexYStep;
+
+            v0 += yOffset0;
+            v1 += yOffset1;
+            v2 += yOffset2;
+        }
+    },
+
+    fillTransparentMeshTriangle(pixels, rasterWidth, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, edge0IsShared, edge1IsShared, edge2IsShared, color) {
+        // The bounding box of the triangle
+        const box_bottom = BitMath.ceiling(BitMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
+        const box_left = BitMath.floor(BitMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_right = BitMath.ceiling(BitMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_top = BitMath.floor(BitMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
+        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+        // edge0
+        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+        // edge1
+        const a1 = triangle_y1 - triangle_y2;
+        const b1 = triangle_x2 - triangle_x1;
+        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+        // edge2
+        const a2 = triangle_y2 - triangle_y0;
+        const b2 = triangle_x0 - triangle_x2;
+        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+
+        let x0, y0, x1, y1, x2, y2;
+
+        // Normal is pointing up
+        if (b0 < 0) {
+            x0 = a0 < 0 ? 0 : 1;
+            y0 = 0;
+        } else {
+            x0 = 0.5; //a0 < 0 ? edge0IsShared : edge0IsShared ^ 1;
+            y0 = 0.5; //edge0IsShared ^ 1 // 0 if edge is shared
+        }
+        if (b1 < 0) {
+            x1 = a1 < 0 ? 0 : 1;
+            y1 = 0;
+        } else {
+            x1 = 0.5;//a1 < 0 ? edge1IsShared : edge1IsShared ^ 1;
+            y1 = 0.5;//edge1IsShared ^ 1 // 0 if edge is shared
+        }
+        if (b2 < 0) {
+            x2 = a2 < 0 ? 0 : 1;
+            y2 = 0;
+        } else {
+            x2 = 0.5;//a2 < 0 ? edge2IsShared : edge2IsShared ^ 1;
+            y2 = 0.5;//edge2IsShared ^ 1 // 0 if edge is shared
+        }
+        
+        /*const x0 = a0 < 0 ? 0: 1
+        const y0 = b0 < 0 ? 0: 1 - edge0IsShared; 
+        const x1 = a1 < 0 ? 0: 1;
+        const y1 = b1 < 0 ? 0: 1 - edge1IsShared;
+        const x2 = a2 < 0 ? 0: 1;
+        const y2 = b2 < 0 ? 0: 1 - edge2IsShared;*/
 
         // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
         let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
