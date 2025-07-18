@@ -1,5 +1,20 @@
-// This is the core application code or "application layer". It should be completely platform agnostic to maximize portability.
-// Do not use non-portable techniques or libraries because logic is meant to be rewritten to C.
+/****************/
+/* THINGS TO DO */
+/****************/
+// * Fix the naming convention to use camelCase with _ separators to indicate ownership.
+//// For example: var canvasRaster = { pixelCount }; var canvasRaster_pixelCount = canvasRaster.pixelCount;
+// NOTE //
+// * Keep code completely platform agnostic to maximize portability.
+//// Platform specific code should be written in a separate file.
+//// Do not use non-portable techniques or libraries because logic is meant to be rewritten to C.
+
+//////////////////////
+// ABOUT RASTERIZER //
+//////////////////////
+// * This application is shaping up to be a showcase for the Raster utility.
+//// The functions in that utility allow you to rasterize various shapes and bitmap images in software.
+//// Rendering in software is slower than on a GPU, but it gives you full control over rendering without introducing dependencies.
+//// If your application is not graphics intensive, rendering in software is a good way to make it more portable/cross platform.
 const Rasterizer = (() => {
 
     const MAX_RASTER_WIDTH = 768;
@@ -41,8 +56,11 @@ const Rasterizer = (() => {
         selectedColor: 0xff000000
     };
 
-    const triangle = [[70, 70], [100, 70], [85, 100]];
-    let triangleAngle = 0;
+    let angle = 0;
+    const points0 = [[60, 60], [90, 60], [75, 90], [75, 75]];
+    const points1 = [[60, 20], [90, 20], [75, 50], [75, 35]];
+    const points2 = [[10, 60], [40, 60], [25, 90], [25, 75]];
+    const points3 = [[10, 20], [40, 20], [25, 50], [25, 35]];
 
     function rotatePointsAroundCenter(points, angleRadians) {
         if (!points.length) return [];
@@ -73,10 +91,7 @@ const Rasterizer = (() => {
     }
 
     resizeRaster(canvas, 100, 100);
-    Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
-
     resizeRaster(display, 768, 768);
-
     resizeRaster(toolbar, 320, 160);
 
     // You could do this in c by passing &width and &height instead of raster
@@ -102,35 +117,9 @@ const Rasterizer = (() => {
         return true;
     }
 
-    function plotPoint(canvasPixels, canvasWidth, canvasHeight, canvasX, canvasY, canvasScale = 1) {
-        console.log(BitMath.floor((mouse.x - canvasX) / canvasScale), BitMath.floor((mouse.y - canvasY) / canvasScale));
-        Raster.fillPixelClipped(canvasPixels, canvasWidth, canvasHeight, BitMath.floor((mouse.x - canvasX) / canvasScale), BitMath.floor((mouse.y - canvasY) / canvasScale), 0xffffffff);
-    }
-
-    function drawPencilIcon(targetPixels, targetRasterWidth, x, y, scale, color0, color1, color2) {
-        const x0 = x;
-        const y0 = BitMath.round(y + 1 * scale);
-        const x1 = x;
-        const y1 = BitMath.round(y + 0.75 * scale);
-        const x2 = BitMath.round(x + 0.75 * scale);
-        const y2 = y;
-        const x3 = BitMath.round(x + 1 * scale);
-        const y3 = BitMath.round(y + 0.25 * scale);
-        const x4 = BitMath.round(x + 0.25 * scale);
-        const y4 = BitMath.round(y + 1 * scale);
-        /*Raster.drawLineSegment(targetPixels, targetRasterWidth, x0, y0, x1, y1, color);
-        Raster.drawLineSegment(targetPixels, targetRasterWidth, x1, y1, x2, y2, color);
-        Raster.drawLineSegment(targetPixels, targetRasterWidth, x2, y2, x3, y3, color);
-        Raster.drawLineSegment(targetPixels, targetRasterWidth, x3, y3, x4, y4, color);
-        Raster.drawLineSegment(targetPixels, targetRasterWidth, x4, y4, x0, y0, color);*/
-        Raster.fillTransparentMeshTriangle(targetPixels, targetRasterWidth, x0, y0, x1, y1, x4, y4, 0, 1, 0, color0);
-        Raster.fillTransparentMeshTriangle(targetPixels, targetRasterWidth, x1, y1, x2, y2, x4, y4, 0, 1, 1, color1);
-        Raster.fillTransparentMeshTriangle(targetPixels, targetRasterWidth, x2, y2, x3, y3, x4, y4, 0, 0, 1, color2);
-        Raster.fillPixel(targetPixels, targetRasterWidth, x0, y0, 0xffffffff);
-        Raster.fillPixel(targetPixels, targetRasterWidth, x1, y1, 0xffffffff);
-        Raster.fillPixel(targetPixels, targetRasterWidth, x2, y2, 0xffffffff);
-        Raster.fillPixel(targetPixels, targetRasterWidth, x3, y3, 0xffffffff);
-        Raster.fillPixel(targetPixels, targetRasterWidth, x4, y4, 0xffffffff);
+    function plotPoint(canvas_pixels, canvas_width, canvas_height, canvas_x, canvas_y, canvasScale = 1) {
+        console.log(BitMath.floor((mouse.x - canvas_x) / canvasScale), BitMath.floor((mouse.y - canvas_y) / canvasScale));
+        Raster.fillClippedPixel(canvas_pixels, canvas_width, 0, 0, canvas_width, canvas_height, BitMath.floor((mouse.x - canvas_x) / canvasScale), BitMath.floor((mouse.y - canvas_y) / canvasScale), 0xffffffff);
     }
 
     return {
@@ -139,6 +128,7 @@ const Rasterizer = (() => {
         getDisplayRasterWidth() { return display.width; },
         getDisplayRasterHeight() { return display.height; },
         render() {
+            MESSAGE = `*** mouse ***\nscreenX: ${mouse.x}, screenY: ${mouse.y}\n`;
             // Clear the background to black.
             Raster.fill(display.pixels, display.pixelCount, 0x00000000);
             // Interior border around displayRaster.
@@ -152,49 +142,95 @@ const Rasterizer = (() => {
             //Raster.copyPixelsScaled(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, canvasPosition.x, canvasPosition.y, canvasScale);
             //Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvasPosition.x + 180, canvasPosition.y + 40, 20);
 
-            const mouseX = BitMath.floor((mouse.x - canvas.x) / canvas.scale);
-            const mouseY = BitMath.floor((mouse.y - canvas.y) / canvas.scale);
+            const mouse_x = BitMath.floor((mouse.x - canvas.x) / canvas.scale);
+            const mouse_y = BitMath.floor((mouse.y - canvas.y) / canvas.scale);
 
-            Raster.fill(canvas.pixels, canvas.pixelCount, 0xff0000ff);
+            TESTDATA.x = mouse_x;
+            TESTDATA.y = mouse_y;
+
+            MESSAGE += `canvas_x: ${mouse_x}, canvas_y: ${mouse_y}\n`;
+
+            Raster.fill(canvas.pixels, canvas.pixelCount, 0xffffffff);
             //Raster.drawLineSegment(canvas.pixels, canvas.width, 50, 50, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 0xffffffff);
             //Raster.drawLineSegmentClipped(canvas.pixels, canvas.width, canvas.height, BitMath.floor((mouse.x - canvas.x)/canvas.scale), BitMath.floor((mouse.y - canvas.y) / canvas.scale), 50, 50, 0xffffffff);
 
+            
             // Top
-            Raster.fillPixel(canvas.pixels, canvas.width, mouseX, mouseY - 1, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 40, 10, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 60, 10, 0xffffffff);
-            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 40, 10, 60, 10, mouseX, mouseY - 1, 0xff00ff00);
+            Raster.fillPixel(canvas.pixels, canvas.width, 40, 10, 0xff808080);
+            Raster.fillPixel(canvas.pixels, canvas.width, 60, 10, 0xff808080);
+            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 40, 10, 60, 10, mouse_x, mouse_y - 1, 0xff00ff00);
 
             // Right
-            Raster.fillPixel(canvas.pixels, canvas.width, mouseX + 1, mouseY, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 90, 60, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 90, 40, 0xffffffff);
-            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 90, 60, mouseX + 1, mouseY, 90, 40, 0xff00c000);
+            Raster.fillPixel(canvas.pixels, canvas.width, 50, 60, 0xff808080);
+            Raster.fillPixel(canvas.pixels, canvas.width, 50, 40, 0xff808080);
+            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 50, 60, mouse_x + 1, mouse_y, 50, 40, 0xff00c000);
 
             // Bottom
-            Raster.fillPixel(canvas.pixels, canvas.width, mouseX, mouseY + 1, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 40, 90, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 60, 90, 0xffffffff);
-            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 40, 90, mouseX, mouseY + 1, 60, 90, 0xff008000);
+            Raster.fillPixel(canvas.pixels, canvas.width, 40, 90, 0xff808080);
+            Raster.fillPixel(canvas.pixels, canvas.width, 60, 90, 0xff808080);
+            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 40, 90, mouse_x, mouse_y + 1, 60, 90, 0xff008000);
 
             // Left
-            Raster.fillPixel(canvas.pixels, canvas.width, mouseX - 1, mouseY, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 10, 60, 0xffffffff);
-            Raster.fillPixel(canvas.pixels, canvas.width, 10, 40, 0xffffffff);
-            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 10, 60, 10, 40, mouseX - 1, mouseY, 0xff004000);
+            Raster.fillPixel(canvas.pixels, canvas.width, 10, 60, 0xff808080);
+            Raster.fillPixel(canvas.pixels, canvas.width, 10, 40, 0xff808080);
+            Raster.fillClippedTriangle(canvas.pixels, canvas.width, 1, 1, canvas.width - 1, canvas.height - 1, 10, 60, 10, 40, mouse_x - 1, mouse_y, 0xff004000);
 
-            drawPencilIcon(canvas.pixels, canvas.width, 5, 5, 20, 0x80ff0000, 0x8000ff00, 0x8000ffff);
+            //drawPencilIcon(canvas.pixels, canvas.width, 5, 5, 20, 0x80ff0000, 0x8000ff00, 0x8000ffff);
 
-            Raster.fillClippedCircle(canvas.pixels,canvas.width, 80, 5, 99, 20, 90, 10, triangleAngle * 10, 0xff00ff00);
+            Raster.fillClippedCircle(canvas.pixels, canvas.width, 80, 5, 99, 20, 90, 10, angle * 10, 0xff00ff00);
             Raster.fillPixel(canvas.pixels, canvas.width, 90, 10, 0xffffffff);
 
             Raster.fillTransparentPixel(canvas.pixels, canvas.width, 1, 1, 0x80ffffff);
             Raster.fillTransparentPixel(canvas.pixels, canvas.width, 1, 1, 0x80ffffff);
 
-            let p = rotatePointsAroundCenter(triangle, triangleAngle);
-            triangleAngle += 0.001;
-            Raster.fillTriangle(canvas.pixels, canvas.width, p[0][0], p[0][1], p[1][0], p[1][1], p[2][0], p[2][1], 0xffff0000);
+            let p0 = rotatePointsAroundCenter(points0, angle);
+            let p1 = rotatePointsAroundCenter(points1, angle);
+            let p2 = rotatePointsAroundCenter(points2, angle);
+            let p3 = rotatePointsAroundCenter(points3, angle);
+            if (mouse.rightIsDown) {
+                angle += 0.001;
+                if (angle > PureMath.PI2) angle -= PureMath.PI2;
+            }
             
+            Raster.fillTransparentMeshTriangle(canvas.pixels, canvas.width, p0[0][0], p0[0][1], p0[1][0], p0[1][1], p0[3][0], p0[3][1], 0, 1, 1, 0x80ff0000);
+            Raster.fillTransparentMeshTriangle(canvas.pixels, canvas.width, p0[1][0], p0[1][1], p0[2][0], p0[2][1], p0[3][0], p0[3][1], 0, 1, 1, 0x8000ff00);
+            Raster.fillTransparentMeshTriangle(canvas.pixels, canvas.width, p0[2][0], p0[2][1], p0[0][0], p0[0][1], p0[3][0], p0[3][1], 0, 1, 1, 0x800000ff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p[0][0]), BitMath.floor(p[0][1]), 0x80ffffff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p[1][0]), BitMath.floor(p[1][1]), 0x80ffffff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p[2][0]), BitMath.floor(p[2][1]), 0x80ffffff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p[3][0]), BitMath.floor(p[3][1]), 0x40ffffff);
+
+            Raster.fillTransparentTriangle(canvas.pixels, canvas.width, p1[0][0], p1[0][1], p1[1][0], p1[1][1], p1[3][0], p1[3][1], 0x80ff0000);
+            Raster.fillTransparentTriangle(canvas.pixels, canvas.width, p1[1][0], p1[1][1], p1[2][0], p1[2][1], p1[3][0], p1[3][1], 0x8000ff00);
+            Raster.fillTransparentTriangle(canvas.pixels, canvas.width, p1[2][0], p1[2][1], p1[0][0], p1[0][1], p1[3][0], p1[3][1], 0x800000ff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p2[0][0]), BitMath.floor(p2[0][1]), 0x80ffffff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p2[1][0]), BitMath.floor(p2[1][1]), 0x80ffffff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p2[2][0]), BitMath.floor(p2[2][1]), 0x80ffffff);
+            //Raster.fillTransparentPixel(canvas.pixels, canvas.width, BitMath.floor(p2[3][0]), BitMath.floor(p2[3][1]), 0x40ffffff);
+
+            for (let i = 0; i < 4; i ++) {
+                p2[i][0] = PureMath.round(p2[i][0]);
+                p2[i][1] = PureMath.round(p2[i][1]);
+                p3[i][0] = PureMath.round(p3[i][0]);
+                p3[i][1] = PureMath.round(p3[i][1]);
+            }
+            // Rounded coordinates
+            Raster.fillTransparentMeshTriangle(canvas.pixels, canvas.width, p2[0][0], p2[0][1], p2[1][0], p2[1][1], p2[3][0], p2[3][1], 0, 1, 1, 0x80ff0000);
+            Raster.fillTransparentMeshTriangle(canvas.pixels, canvas.width, p2[1][0], p2[1][1], p2[2][0], p2[2][1], p2[3][0], p2[3][1], 0, 1, 1, 0x8000ff00);
+            Raster.fillTransparentMeshTriangle(canvas.pixels, canvas.width, p2[2][0], p2[2][1], p2[0][0], p2[0][1], p2[3][0], p2[3][1], 0, 1, 1, 0x800000ff);
+
+            Raster.fillTransparentTriangle(canvas.pixels, canvas.width, p3[0][0], p3[0][1], p3[1][0], p3[1][1], p3[3][0], p3[3][1], 0x80ff0000);
+            Raster.fillTransparentTriangle(canvas.pixels, canvas.width, p3[1][0], p3[1][1], p3[2][0], p3[2][1], p3[3][0], p3[3][1], 0x8000ff00);
+            Raster.fillTransparentTriangle(canvas.pixels, canvas.width, p3[2][0], p3[2][1], p3[0][0], p3[0][1], p3[3][0], p3[3][1], 0x800000ff);
+
+            // Mouse crosshair
+            Raster.fillPixel(canvas.pixels, canvas.width, mouse_x, mouse_y - 1, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, mouse_x + 1, mouse_y, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, mouse_x, mouse_y + 1, 0xffffffff);
+            Raster.fillPixel(canvas.pixels, canvas.width, mouse_x - 1, mouse_y, 0xffffffff);
+
+            //Raster.fillAxisAlignedRectangle(canvas.pixels, canvas.width, 20 + angle * 10, 20, 8.1, 8, 0xffff0000);
+            Raster.fillClippedAxisAlignedRectangle(canvas.pixels, canvas.width, 30, 20, 40, 30, 20 + angle * 10, 20, 8.1, 8, 0xffff0000);
             //Raster.fillHorizontalLineClipped(canvas.pixels, canvas.width, canvas.height, -10, 99, 2000, 0xffffffff);
             //Raster.fillVerticalLineClipped(canvas.pixels, canvas.width, canvas.height, 99, 0, 99, 0xffffffff);
             Raster.copyPixelsScaledClipped(canvas.pixels, canvas.width, canvas.height, display.pixels, display.width, display.height, canvas.x, canvas.y, canvas.scale);

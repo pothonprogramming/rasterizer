@@ -1,4 +1,20 @@
-// Note that these functions will only work with whole integers. Floats will be truncated.
+/****************/
+/* THINGS TO DO */
+/****************/
+// * Make sure that functions are clearly labeled to indicate whether they take int or float input.
+// * Make sure that functions indicate whether they will yield an approximate or exact value.
+
+////////////////////////
+// ABOUT THIS UTILITY //
+////////////////////////
+// * The primary goal of this utility to to provide fast, branchless operations that solve math problems.
+//// Most of these functions use bitwise tricks to get a result faster than pure mathematical logic would.
+//// Note that these methods are primarily concerned with speed and not with exact mathematical accuracy.
+
+////////////////////////////////////////////////////////////
+// NOTE: FLOATS MAY BE TRUNCATED WHEN USING THESE METHODS //
+////////////////////////////////////////////////////////////
+
 const BitMath = (() => {
     return {
         // Removes the sign from the integer. Will truncate a float value.
@@ -30,9 +46,10 @@ const BitMath = (() => {
             };
         })(),
         // Returns the ceiling of the float value, which returns the nearest whole integer that is closer to +infinity.
+        // This has a branch in it. It is not purely bit math.
         ceiling(value) {
-            const i = value | 0;
-            return i + ((value > i) & 1);
+            const integer = value | 0;
+            return integer + ((value > integer) & 1);
         },
         // Returns the value if it is less than the threshold, otherwise returns the threshold.
         clampHigh(value, threshold) {
@@ -69,6 +86,7 @@ const BitMath = (() => {
         isNotZero(value) {
             return (value | -value) >> 31 & 1;
         },
+        // maximum and minimum methods truncate float values
         // Returns the maximum of the two values
         maximum2(value1, value2) {
             return value1 ^ ((value1 ^ value2) & ((value1 - value2) >> 31));

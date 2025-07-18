@@ -12,22 +12,30 @@
             padding: 0;
         }
 
-        body, html {
+        body,
+        html {
             height: 100%;
             width: 100%;
         }
 
         canvas {
-            cursor:none;
+            cursor: none;
             image-rendering: pixelated;
-            position:fixed;
+            position: fixed;
         }
     </style>
     <title>Rasterizer</title>
 </head>
 
 <body>
+    <script>
+        // This is for debugging. Remove it.
+        let MESSAGE = "";
+        let TESTDATA = {x:0, y:0};
+    </script>
+
     <script src="library/bit-math.js"></script>
+    <script src="library/pure-math.js"></script>
     <script src="library/color.js"></script>
     <script src="library/geometry.js"></script>
     <script src="library/input.js"></script>

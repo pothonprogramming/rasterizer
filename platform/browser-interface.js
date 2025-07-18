@@ -15,13 +15,15 @@
                 Rasterizer.updateMouseRightIsDown(mouseDown);
                 break;
         }
-        Rasterizer.update();
-        Rasterizer.render();
-        render();
     }
 
     function handleMouseMove(event) {
         Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
+        output.innerText = MESSAGE;
+    }
+
+    function handleAnimationFrameRequest(timeStamp) {
+        animationFrameRequestId = window.requestAnimationFrame(handleAnimationFrameRequest);
         Rasterizer.update();
         Rasterizer.render();
         render();
@@ -67,21 +69,29 @@
     const canvas = document.createElement("canvas");
     const canvasContext2D = canvas.getContext("2d");
     canvasContext2D.imageSmoothingEnabled = false;
+
+    const output = document.createElement("p");
+    output.style.position = "fixed";
+    output.style.color = "#ffffff";
+    output.style.fontSize = "1.5em";
     
+    let animationFrameRequestId;
     let canvasRectangle;
-    
     let displayView;
     let imageData;
 
     resetImageData();
 
     document.body.appendChild(canvas);
+    document.body.appendChild(output);
     document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
     window.addEventListener("mousedown", handleMouseDownOrMouseUp);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseDownOrMouseUp);
     window.addEventListener("resize", handleWindowResize);
     window.dispatchEvent(new Event("resize"));
+
+    animationFrameRequestId = window.requestAnimationFrame(handleAnimationFrameRequest);
 
     render();
 
