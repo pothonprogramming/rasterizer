@@ -352,10 +352,95 @@ const Raster = {
 
     // Convex polygons should all be handled the same way
 
-    // Used to draw a rectangle that may be rotated.
+    // Used to draw a a convex polygon from a flat array of point coordinates.
     // This method can also be used to draw a thick line.
-    fillRectangle(pixels, raster_width, x0, y0, x1, y1, x2, y2, x3, y3, color) {
+    fillConvexPolygon(pixels, raster_width, coordinates, coordinateCount, color) {
 
+        // Find the bounding box edges
+        let box_bottom;
+        for (let index = 0; index < coordinateCount; index ++) {
+
+        }
+
+
+        // This will basically do the same thing the triangle version does, but more generalized to handle more points.
+        // The bounding box of the triangle
+        //const box_bottom = BitMath.ceiling(BitMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
+        const box_left = BitMath.floor(BitMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_right = BitMath.ceiling(BitMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
+        const box_top = BitMath.floor(BitMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
+        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+        // The equation of a line is ax + by + c = 0
+        // a and b are the x and y values of the normal of the line.
+        // c is the negative dot product of the point (x, y) and the normal (a, b).
+        // When the point (x, y) is on the line, the equation will yield 0.
+        // When the point (x, y) is to the right or left of the line, the equation will yield a positive or negative value.
+
+        // Set up the coefficient values for each line segment in the triangle.
+        // The right normal of a vector, v (p1.x - p0.x, p1.y - p0.y) is (-vy, vx)
+        // edge0
+        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+        // edge1
+        const a1 = triangle_y1 - triangle_y2;
+        const b1 = triangle_x2 - triangle_x1;
+        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+        // edge2
+        const a2 = triangle_y2 - triangle_y0;
+        const b2 = triangle_x0 - triangle_x2;
+        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+        // This algorithm fills any pixel that the triangle overlaps.
+        // A pixel is technically an area, not a point. Points are infinitely small. Pixels have an area of 1x1 or 1.
+        // A pixel has 4 corner points.
+        // Instead of testing the top left corner or the center point, this algorithm tests the point that is farthest along the normal vector.
+        // The normal vector points inside the triangle. Getting the point that is deepest into the triangle will ensure the overlap test is accurate.
+
+        // Get the x and y offsets for each pixel test
+        // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
+        const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
+        const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
+        const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
+        const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
+        const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
+        const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
+
+        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
+        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+
+        // The y increment to add to the edge test result on each y iteration
+        const yOffset0 = b0 - a0 * box_width;
+        const yOffset1 = b1 - a1 * box_width;
+        const yOffset2 = b2 - a2 * box_width;
+
+        // Set up the first index and row step.
+        let index = box_top * raster_width + box_left;
+        const indexYStep = raster_width - box_width;
+
+        for (let y = box_top; y < box_bottom; y++) {
+
+            for (let x = box_left; x < box_right; x++) {
+                // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
+                // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
+                if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = color;
+
+                index++;
+
+                v0 += a0;
+                v1 += a1;
+                v2 += a2;
+            }
+
+            index += indexYStep;
+
+            v0 += yOffset0;
+            v1 += yOffset1;
+            v2 += yOffset2;
+        }
     },
 
     ////////////
