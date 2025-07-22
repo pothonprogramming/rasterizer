@@ -8,8 +8,8 @@
 //// For example: var canvasRaster = { pixelCount }; var canvasRaster_pixelCount = canvasRaster.pixelCount;
 // * Clipping functions should take clip rect properties instead of just clipping to the target raster
 //// This is a more flexible approach and will allow clipping to an arbitrary axis aligned rect within the raster.
-// * I'm not sure I like the "draw" prefix for functions that draw outlines. "fill" is good, because it's filling the shape.
-//// Maybe "trace" instead of "draw". It's still short and is much more clear than draw. "outline" is longer, but more clear.
+// * When doing edge tests, I'm not accounting for rounding errors. I'm just adding to the original test result over and over again.
+//// For very long edges, this could produce a skewed line. I should probably keep the original value and multiply it by an iteration factor for more accuracy.
 
 //////////////////////////////
 // ABOUT THE RASTER UTILITY //
@@ -205,7 +205,7 @@ const Raster = {
         for (let index = firstIndex; index < lastIndex; index += raster_width) raster_pixels[index] = color;
     },
 
-    drawLineSegment(raster_pixels, raster_width, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
+    traceLineSegment(raster_pixels, raster_width, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
         const absoluteRise = BitMath.absolute(lineSegmentY1 - lineSegmentY0);
         const absoluteRun = BitMath.absolute(lineSegmentX1 - lineSegmentX0);
         const stepX = lineSegmentX0 < lineSegmentX1 ? 1 : -1;
@@ -243,7 +243,7 @@ const Raster = {
         raster_pixels[index] = color; // Draw the last pixel in the line segment.
     },
 
-    drawLineSegmentClipped(raster_pixels, raster_width, raster_height, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
+    traceLineSegmentClipped(raster_pixels, raster_width, raster_height, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
         let t0 = 0; // time along the line segment at point0
         let t1 = 1; // time along the line segment at point1
         let deltaX = lineSegmentX1 - lineSegmentX0; // rate of change along x axis
@@ -352,96 +352,122 @@ const Raster = {
 
     // Convex polygons should all be handled the same way
 
-    // Used to draw a a convex polygon from a flat array of point coordinates.
-    // This method can also be used to draw a thick line.
-    fillConvexPolygon(pixels, raster_width, coordinates, coordinateCount, color) {
+    // * Used to draw a a convex polygon from a flat array of point coordinates.
+    //// This is meant as a general purpose function. If handling a lot of quads, for example, it would be better to use a function designed specifically for quads.
+    //// This function suffers from having to do a lot of looping to handle the unknown number of coordinates that will be passed in.
+    // * NOTE: This function expects coordinates in clockwise winding order.
+    fillConvexPolygon(raster_pixels, raster_width, coordinates, coordinateCount, color) {
 
-        // Find the bounding box edges
-        let box_bottom;
-        for (let index = 0; index < coordinateCount; index ++) {
+        // * Find the bounding box edges.
+        //// By using the last coordinate pair in the array to set initial values, one iteration can be avoided when getting boundaries.
+        // * Note that edge_x0 and edge_y0 are also being defined as the last point in the coordinates array.
+        //// They are defined here for performance, but aren't used to calculate box boundaries.
+        //// This point will become the first point in the first edge that will be tested.
+        let edge_x0 = coordinates[coordinateCount - 2];
+        let edge_y0 = coordinates[coordinateCount - 1];
+        let box_bottom = edge_y0;
+        let box_left = edge_x0;
+        let box_right = edge_x0;
+        let box_top = edge_y0;
 
+        for (let index = 0; index < coordinateCount - 2; index += 2) {
+            const x = coordinates[index];
+            const y = coordinates[index + 1];
+            // Expand the bounding box to encompass all points.
+            if (x < box_left) box_left = x;
+            else if (x > box_right) box_right = x;
+            if (y < box_top) box_top = y;
+            else if (y > box_bottom) box_bottom = y;
         }
 
+        // Ensure that the bounding box is large enough to contain all points within its area or on its edges.
+        box_bottom = PureMath.ceiling(box_bottom);
+        box_left = PureMath.floor(box_left);
+        box_right = PureMath.ceiling(box_right);
+        box_top = PureMath.floor(box_top);
+        const box_width = box_right - box_left;
 
-        // This will basically do the same thing the triangle version does, but more generalized to handle more points.
-        // The bounding box of the triangle
-        //const box_bottom = BitMath.ceiling(BitMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_left = BitMath.floor(BitMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_right = BitMath.ceiling(BitMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_top = BitMath.floor(BitMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+        MESSAGE += `Bounding Box:\n${box_left}, ${box_top}, ${box_right}, ${box_bottom}\n`;
 
-        // The equation of a line is ax + by + c = 0
-        // a and b are the x and y values of the normal of the line.
-        // c is the negative dot product of the point (x, y) and the normal (a, b).
-        // When the point (x, y) is on the line, the equation will yield 0.
-        // When the point (x, y) is to the right or left of the line, the equation will yield a positive or negative value.
+        const edgeCount = coordinateCount >>> 1;
+        // * The test result is the value of ax + by + c for a given x, y coordinate.
+        //// Note: frequently mutating the test result is done to save computations, but it does introduce rounding errors.
+        // * Note for the next 3 arrays: it would likely be faster for memory access to have one flat array instead of 3.
+        //// The more I think about this the more I think I should use a flat array.
+        const edgeData_testResults = new Float32Array(edgeCount);
+        // The x offset amount that is used to increment the test result value on every x iteration.
+        const edgeData_xSteps = new Float32Array(edgeCount);
+        // The amount to add to the test result value for each iteration of y.
+        const edgeData_ySteps = new Float32Array(edgeCount);
+        let edgeIndex = 0;
 
-        // Set up the coefficient values for each line segment in the triangle.
-        // The right normal of a vector, v (p1.x - p0.x, p1.y - p0.y) is (-vy, vx)
-        // edge0
-        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
-        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
-        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
-        // edge1
-        const a1 = triangle_y1 - triangle_y2;
-        const b1 = triangle_x2 - triangle_x1;
-        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
-        // edge2
-        const a2 = triangle_y2 - triangle_y0;
-        const b2 = triangle_x0 - triangle_x2;
-        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+        for (let index = 0; index < coordinateCount; index += 2) {
+            const edge_x1 = coordinates[index];
+            const edge_y1 = coordinates[index + 1];
 
-        // This algorithm fills any pixel that the triangle overlaps.
-        // A pixel is technically an area, not a point. Points are infinitely small. Pixels have an area of 1x1 or 1.
-        // A pixel has 4 corner points.
-        // Instead of testing the top left corner or the center point, this algorithm tests the point that is farthest along the normal vector.
-        // The normal vector points inside the triangle. Getting the point that is deepest into the triangle will ensure the overlap test is accurate.
+            // * a is the coefficient of x in the formula ax + by + c = 0
+            //// It is also the x value of the right side edge normal.
+            const a = edgeData_xSteps[edgeIndex] = edge_y0 - edge_y1; // edgeData[0] is the right normal x value
+            // * b is the coefficient of y in the formula ax + by + c = 0
+            //// It is also the y value of the right side edge normal.
+            const b = edge_x1 - edge_x0;
+            //// * c is the negative dot product of vector (a, b) and vector (x, y) in the formula ax + by + c = 0
+            const c = -a * edge_x0 - b * edge_y0; // The negative dot product of the normal and the point
 
-        // Get the x and y offsets for each pixel test
-        // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
-        const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
-        const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
-        const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
-        const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
-        const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
-        const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
+            // Calculate the offset to use when choosing which corner point of the pixel to test.
+            const pixelOffset_x = a < 0 ? 0 : 1;
+            const pixelOffset_y = b < 0 ? 0 : 1;
 
-        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
-        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
-        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
-        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+            // * The result of the edge test for the top left pixel in the bounding box.
+            //// This value will be mutated for every x and y iteration. This may lead to rounding errors for long edges.
+            edgeData_testResults[edgeIndex] = a * (box_left + pixelOffset_x) + b * (box_top + pixelOffset_y) + c;
+            // The amount to offset the testResult for each increment of y in the test points.
+            edgeData_ySteps[edgeIndex] = b - a * box_width;
 
-        // The y increment to add to the edge test result on each y iteration
-        const yOffset0 = b0 - a0 * box_width;
-        const yOffset1 = b1 - a1 * box_width;
-        const yOffset2 = b2 - a2 * box_width;
+            // Prepare for the next iteration.
+            edgeIndex++;
+            edge_x0 = edge_x1;
+            edge_y0 = edge_y1;
+        }
 
         // Set up the first index and row step.
         let index = box_top * raster_width + box_left;
         const indexYStep = raster_width - box_width;
 
         for (let y = box_top; y < box_bottom; y++) {
-
             for (let x = box_left; x < box_right; x++) {
-                // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
-                // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
-                if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = color;
+
+                if (x == TESTDATA.x && y == TESTDATA.y) {
+                    MESSAGE += `${coordinates[0]}, ${coordinates[1]}\n${coordinates[2]}, ${coordinates[3]}\n${coordinates[4]}, ${coordinates[5]}\n${coordinates[6]}, ${coordinates[7]}\n`;
+                }
+
+                let fill = true; // Assume that you will fill all pixels
+                // If any test result is 0 or negative, stop testing edges.
+                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) if (edgeData_testResults[edgeIndex] <= 0) {
+                    fill = false;
+                    break;
+                }
+
+                // Every edge must get an updated test result regardless of test pass or fail.
+                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_xSteps[edgeIndex]; // increment testResult by right normal x value
+
+                if (fill) raster_pixels[index] = color;
 
                 index++;
 
-                v0 += a0;
-                v1 += a1;
-                v2 += a2;
             }
 
-            index += indexYStep;
+            // Update edge test result for y iteration.
+            for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_ySteps[edgeIndex]; // increment testResult by yOffset
 
-            v0 += yOffset0;
-            v1 += yOffset1;
-            v2 += yOffset2;
+            index += indexYStep;
         }
     },
+
+    //////////////////
+    // CONVEX QUADS //
+    //////////////////
+    // It's worth having some methods to handle convex quads efficiently, because they are common shapes and may be used often.
 
     ////////////
     // RASTER //
@@ -707,7 +733,7 @@ const Raster = {
             for (let x = box_left; x < box_right; x++) {
                 if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = Color.blendOverOpaqueBase(color, raster_pixels[index]);
 
-                if (x === TESTDATA.x && y === TESTDATA.y) {
+                /*if (x === TESTDATA.x && y === TESTDATA.y) {
 
                     MESSAGE += `\n--- triangle --- ${(color >>> 0).toString(16)} --- test point: x: ${x}, y: ${y}\n`;
                     MESSAGE += `- boundary:\n${box_left}, ${box_top}\n${box_right}, ${box_bottom}\n`
@@ -717,7 +743,7 @@ const Raster = {
 
                     //MESSAGE +=(edge0IsShared && (b0 < 0 || b0 == 0 && a0 > 0) ? v0 >= 0 : v0 > 0) , (edge1IsShared && (b1 < 0 || b1 == 0 && a1 > 0) ? v1 >= 0 : v1 > 0) , (edge2IsShared && b2 < 0 ? (v2 >= 0 || b2 == 0 && a2 > 0) : v2 > 0);
                     //console.log(triangle_x2 + ' -> ' + triangle_x0, triangle_y2 + ' -> ' + triangle_y0, a2, b2, x + x2, y + y2, v1);
-                }
+                }*/
 
                 index++;
 
@@ -890,6 +916,7 @@ const Raster = {
 
                 index++;
 
+                // Mutating the floating point test results like this will produce rounding errors and possibly distort long edges.
                 v0 += a0;
                 v1 += a1;
                 v2 += a2;

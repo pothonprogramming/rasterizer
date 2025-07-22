@@ -19,7 +19,6 @@
 
     function handleMouseMove(event) {
         Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
-        output.innerText = MESSAGE;
     }
 
     function handleAnimationFrameRequest(timeStamp) {
@@ -27,6 +26,7 @@
         Rasterizer.update();
         Rasterizer.render();
         render();
+        output.innerText = MESSAGE;
     }
 
     function handleWindowResize(event) {
