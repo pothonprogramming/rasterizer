@@ -22,23 +22,27 @@
     }
 
     function handleAnimationFrameRequest(timeStamp) {
-        animationFrameRequestId = window.requestAnimationFrame(handleAnimationFrameRequest);
-        Rasterizer.update();
-        Rasterizer.render();
-        render();
+        MESSAGE = "";
+        if (Rasterizer.update(timeStamp)) if (Rasterizer.render()) render();
+
+        animmationFrameRequestId = window.requestAnimationFrame(handleAnimationFrameRequest);
+        //window.cancelAnimationFrame(animmationFrameRequestId);
+        
         output.innerText = MESSAGE;
     }
 
     function handleWindowResize(event) {
         const windowInnerWidth = event.target.innerWidth;
         const windowInnerHeight = event.target.innerHeight;
-        const displayRasterWidth = Rasterizer.getDisplayRasterWidth();
-        const displayRasterHeight = Rasterizer.getDisplayRasterHeight();
+
+        const maximumRasterHeight = Rasterizer.getMaximumRasterHeight();
+        const maximumRasterWidth = Rasterizer.getMaximumRasterWidth();
 
         // The canvas must never exceed the size of the window or the size of the display raster.
-        const canvasWidth = windowInnerWidth < displayRasterWidth ? windowInnerWidth : displayRasterWidth;
-        const canvasHeight = windowInnerHeight < displayRasterHeight ? windowInnerHeight : displayRasterHeight;
+        const canvasWidth = windowInnerWidth < maximumRasterWidth ? windowInnerWidth : maximumRasterWidth;
+        const canvasHeight = windowInnerHeight < maximumRasterHeight ? windowInnerHeight : maximumRasterHeight;
 
+        Rasterizer.resizeDisplay(canvasWidth, canvasHeight);
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
         canvasContext2D.imageSmoothingEnabled = false;
@@ -47,10 +51,6 @@
         canvas.style.top = Math.floor((windowInnerHeight - canvasHeight) * 0.5) + "px";
 
         canvasRectangle = canvas.getBoundingClientRect();
-
-        //Rasterizer.resizeDisplay(canvasWidth, canvasHeight);
-
-        Rasterizer.render();
 
         resetImageData();
 
@@ -66,20 +66,32 @@
         canvasContext2D.putImageData(imageData, 0, 0);
     }
 
+    /////////////////
+    // CANVAS DATA //
+    /////////////////
+
     const canvas = document.createElement("canvas");
     const canvasContext2D = canvas.getContext("2d");
     canvasContext2D.imageSmoothingEnabled = false;
 
+    let canvasRectangle;
+    let displayView;
+    let imageData;
+
+    /***************/
+    /* TEST OUTPUT */
+    /***************/
+    // * Delete this stuff when it's no longer needed.
     const output = document.createElement("p");
     output.style.position = "fixed";
     output.style.color = "#ffffff";
     output.style.fontSize = "1.5em";
     
+    ///////////////
+    // LOOP DATA //
+    ///////////////
     let animationFrameRequestId;
-    let canvasRectangle;
-    let displayView;
-    let imageData;
-
+    
     resetImageData();
 
     document.body.appendChild(canvas);

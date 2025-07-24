@@ -1,9 +1,20 @@
+/****************/
+/* THINGS TO DO */
+/****************/
+// * I think it would be good to also include bulk processing functions that are suitable for processing large arrays of component data.
+//// For example, in an Entity Component based design, entity data would be stored in dense, flat arrays and offsets would be specified to access data for each entity.
+//// This would make processing super fast.
+
 ////////////////////////
 // ABOUT THIS UTILITY //
 ////////////////////////
 // * The goal of this utility is to help with the manipulation of shapes.
+// * These methods will often expect a flat array of coordinates in the form x0, y0, x1, y1, x2, y2...
+//// The reason for this is that x and y values are very commonly used together and seldom used separately.
+//// When focusing on cache efficiency, it is best to keep x and y values packed tightly together in the same location if they will be accessed together often.
 
 const Geometry = {
+
     // Rotates an array of coordinates around their average center point.
     // * coordinates is the original array of coordinates that will be used to generate rotated coordinates.
     // * rotatedCoordinates is an array that will be populated with the rotated coordinates.
@@ -16,11 +27,11 @@ const Geometry = {
         // Find the center point coordinates by first summing up all coordinate values and then dividing by the number of points.
         let center_x = coordinates[0];
         let center_y = coordinates[1];
-        for (let index = 2; index < coordinateCount; index += 2) {
-            center_x += coordinates[index];
-            center_y += coordinates[index + 1];
+        for (let xIndex = 2; xIndex < coordinateCount; xIndex += 2) {
+            center_x += coordinates[xIndex];
+            center_y += coordinates[xIndex + 1];
         }
-        const inversePointCount = 2 / coordinateCount; // There are two coordinates per point
+        const inversePointCount = 2 / coordinateCount; // There are two coordinates per point.
         center_x *= inversePointCount;
         center_y *= inversePointCount;
 
@@ -28,13 +39,44 @@ const Geometry = {
         const cosine = PureMath.approximateCosine(angleInRadians);
         const sine = PureMath.approximateSine(angleInRadians);
 
-        for (let index = 0; index < coordinateCount; index += 2) {
-            const vector_x = coordinates[index] - center_x;
-            const vector_y = coordinates[index + 1] - center_y;
+        for (let xIndex = 0; xIndex < coordinateCount; xIndex += 2) {
+            const yIndex = xIndex + 1;
+            const vector_x = coordinates[xIndex] - center_x;
+            const vector_y = coordinates[yIndex] - center_y;
 
-            rotatedCoordinates[index] = vector_x * cosine - vector_y * sine + center_x;
-            rotatedCoordinates[index + 1] = vector_x * sine + vector_y * cosine + center_y;
+            rotatedCoordinates[xIndex] = vector_x * cosine - vector_y * sine + center_x;
+            rotatedCoordinates[yIndex] = vector_x * sine + vector_y * cosine + center_y;
         };
+    },
+
+    // * This function is a placeholder for rotating individual points around their center
+    //// I'm not sure that this is needed, but it would be useful to rotate points in a point cloud.
+    rotate2DCoordinatesAroundCenterByAngles(coordinates, rotatedCoordinates, coordinateCount, anglesInRadians) {},
+
+    scale2DCoordinatesAroundCenter(coordinates, scaledCoordinates, coordinateCount, scale) {
+        let center_x = coordinates[0];
+        let center_y = coordinates[1];
+        for (let xIndex = 2; xIndex < coordinateCount; xIndex += 2) {
+            center_x += coordinates[xIndex];
+            center_y += coordinates[xIndex + 1];
+        }
+        const inversePointCount = 2 / coordinateCount; // There are two coordinates per point.
+        center_x *= inversePointCount;
+        center_y *= inversePointCount;
+
+        for (let xIndex = 0; xIndex < coordinateCount; xIndex += 2) {
+            const yIndex = xIndex + 1;
+            scaledCoordinates[xIndex] = (coordinates[xIndex] - center_x) * scale + center_x;
+            scaledCoordinates[yIndex] = (coordinates[yIndex] - center_y) * scale + center_y;
+        }
+    },
+
+    translate2DCoordinatesByVector(coordinates, movedCoordinates, coordinateCount, vector_x, vector_y) {
+        for (let xIndex = 0; xIndex < coordinateCount; xIndex += 2) {
+            const yIndex = xIndex + 1;
+            movedCoordinates[xIndex] = coordinates[xIndex] + vector_x;
+            movedCoordinates[yIndex] = coordinates[yIndex] + vector_y;
+        }
     },
 
     // Returns the wedge product of two vectors.

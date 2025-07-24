@@ -161,6 +161,128 @@ const Raster = {
         }
     },
 
+    /////////////////////
+    // CONVEX POLYGONS //
+    /////////////////////
+
+    // Convex polygons should all be handled the same way
+
+    // * Used to draw a a convex polygon from a flat array of point coordinates.
+    //// This is meant as a general purpose function. If handling a lot of quads, for example, it would be better to use a function designed specifically for quads.
+    //// This function suffers from having to do a lot of looping to handle the unknown number of coordinates that will be passed in.
+    // * NOTE: This function expects coordinates in clockwise winding order.
+    fillConvexPolygon(raster_pixels, raster_width, coordinates, coordinateCount, color) {
+
+        // * Find the bounding box edges.
+        //// By using the last coordinate pair in the array to set initial values, one iteration can be avoided when getting boundaries.
+        // * Note that edge_x0 and edge_y0 are also being defined as the last point in the coordinates array.
+        //// They are defined here for performance, but aren't used to calculate box boundaries.
+        //// This point will become the first point in the first edge that will be tested.
+        let edge_x0 = coordinates[coordinateCount - 2];
+        let edge_y0 = coordinates[coordinateCount - 1];
+        let box_bottom = edge_y0;
+        let box_left = edge_x0;
+        let box_right = edge_x0;
+        let box_top = edge_y0;
+
+        for (let index = 0; index < coordinateCount - 2; index += 2) {
+            const x = coordinates[index];
+            const y = coordinates[index + 1];
+            // Expand the bounding box to encompass all points.
+            if (x < box_left) box_left = x;
+            else if (x > box_right) box_right = x;
+            if (y < box_top) box_top = y;
+            else if (y > box_bottom) box_bottom = y;
+        }
+
+        // Ensure that the bounding box is large enough to contain all points within its area or on its edges.
+        box_bottom = PureMath.ceiling(box_bottom);
+        box_left = PureMath.floor(box_left);
+        box_right = PureMath.ceiling(box_right);
+        box_top = PureMath.floor(box_top);
+        const box_width = box_right - box_left;
+
+        const edgeCount = coordinateCount >>> 1;
+        // * The test result is the value of ax + by + c for a given x, y coordinate.
+        //// Note: frequently mutating the test result is done to save computations, but it does introduce rounding errors.
+        // * Note for the next 3 arrays: it would likely be faster for memory access to have one flat array instead of 3.
+        //// The more I think about this the more I think I should use a flat array.
+        const edgeData_testResults = new Float32Array(edgeCount);
+        // The x offset amount that is used to increment the test result value on every x iteration.
+        const edgeData_xSteps = new Float32Array(edgeCount);
+        // The amount to add to the test result value for each iteration of y.
+        const edgeData_ySteps = new Float32Array(edgeCount);
+        let edgeIndex = 0;
+
+        for (let index = 0; index < coordinateCount; index += 2) {
+            const edge_x1 = coordinates[index];
+            const edge_y1 = coordinates[index + 1];
+
+            // * a is the coefficient of x in the formula ax + by + c = 0
+            //// It is also the x value of the right side edge normal.
+            const a = edgeData_xSteps[edgeIndex] = edge_y0 - edge_y1; // edgeData[0] is the right normal x value
+            // * b is the coefficient of y in the formula ax + by + c = 0
+            //// It is also the y value of the right side edge normal.
+            const b = edge_x1 - edge_x0;
+            //// * c is the negative dot product of vector (a, b) and vector (x, y) in the formula ax + by + c = 0
+            const c = -a * edge_x0 - b * edge_y0; // The negative dot product of the normal and the point
+
+            // Calculate the offset to use when choosing which corner point of the pixel to test.
+            const pixelOffset_x = a < 0 ? 0 : 1;
+            const pixelOffset_y = b < 0 ? 0 : 1;
+
+            // * The result of the edge test for the top left pixel in the bounding box.
+            //// This value will be mutated for every x and y iteration. This may lead to rounding errors for long edges.
+            edgeData_testResults[edgeIndex] = a * (box_left + pixelOffset_x) + b * (box_top + pixelOffset_y) + c;
+            // The amount to offset the testResult for each increment of y in the test points.
+            edgeData_ySteps[edgeIndex] = b - a * box_width;
+
+            // Prepare for the next iteration.
+            edgeIndex++;
+            edge_x0 = edge_x1;
+            edge_y0 = edge_y1;
+        }
+
+        // Set up the first index and row step.
+        let index = box_top * raster_width + box_left;
+        const indexYStep = raster_width - box_width;
+
+        for (let y = box_top; y < box_bottom; y++) {
+            for (let x = box_left; x < box_right; x++) {
+
+                if (x == TESTDATA.x && y == TESTDATA.y) {
+                    MESSAGE += `Bounding Box:\n${box_left}, ${box_top}, ${box_right}, ${box_bottom}\n`;
+                    MESSAGE += `${coordinates[0]}, ${coordinates[1]}\n${coordinates[2]}, ${coordinates[3]}\n${coordinates[4]}, ${coordinates[5]}\n${coordinates[6]}, ${coordinates[7]}\n`;
+                }
+
+                let fill = true; // Assume that you will fill all pixels
+                // If any test result is 0 or negative, stop testing edges.
+                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) if (edgeData_testResults[edgeIndex] <= 0) {
+                    fill = false;
+                    break;
+                }
+
+                // Every edge must get an updated test result regardless of test pass or fail.
+                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_xSteps[edgeIndex]; // increment testResult by right normal x value
+
+                if (fill) raster_pixels[index] = color;
+
+                index++;
+
+            }
+
+            // Update edge test result for y iteration.
+            for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_ySteps[edgeIndex]; // increment testResult by yOffset
+
+            index += indexYStep;
+        }
+    },
+
+    //////////////////
+    // CONVEX QUADS //
+    //////////////////
+    // It's worth having some methods to handle convex quads efficiently, because they are common shapes and may be used often.
+
     ///////////
     // LINES //
     ///////////
@@ -323,6 +445,17 @@ const Raster = {
         raster_pixels[pixel_y * raster_width + pixel_x] = color;
     },
 
+    // * pixelCoordinates is a flat array of pixel coordinates in the form x0, y0, x1, y1, x2, y2...
+    // * colors is a flat array of 32 bit int color values.
+    fillPixels(raster_pixels, raster_width, pixelCoordinates, colors, coordinateCount) {
+        let colorIndex = 0;
+        for (let xIndex = 0; xIndex < coordinateCount; xIndex += 2) {
+            let yIndex = xIndex + 1;
+            raster_pixels[pixelCoordinates[yIndex] * raster_width + pixelCoordinates[xIndex]] = colors[colorIndex];
+            colorIndex ++;
+        }
+    },
+
     // Colors are in aabbggrr format
     fillTransparentPixel(raster_pixels, raster_width, pixel_x, pixel_y, color) {
         const index = pixel_y * raster_width + pixel_x;
@@ -345,129 +478,6 @@ const Raster = {
         if (pixel_x < clip_left || pixel_y < clip_top || pixel_x > clip_right || pixel_y > clip_bottom) return;
         raster_pixels[pixel_y * raster_width + pixel_x] = color;
     },
-
-    /////////////////////
-    // CONVEX POLYGONS //
-    /////////////////////
-
-    // Convex polygons should all be handled the same way
-
-    // * Used to draw a a convex polygon from a flat array of point coordinates.
-    //// This is meant as a general purpose function. If handling a lot of quads, for example, it would be better to use a function designed specifically for quads.
-    //// This function suffers from having to do a lot of looping to handle the unknown number of coordinates that will be passed in.
-    // * NOTE: This function expects coordinates in clockwise winding order.
-    fillConvexPolygon(raster_pixels, raster_width, coordinates, coordinateCount, color) {
-
-        // * Find the bounding box edges.
-        //// By using the last coordinate pair in the array to set initial values, one iteration can be avoided when getting boundaries.
-        // * Note that edge_x0 and edge_y0 are also being defined as the last point in the coordinates array.
-        //// They are defined here for performance, but aren't used to calculate box boundaries.
-        //// This point will become the first point in the first edge that will be tested.
-        let edge_x0 = coordinates[coordinateCount - 2];
-        let edge_y0 = coordinates[coordinateCount - 1];
-        let box_bottom = edge_y0;
-        let box_left = edge_x0;
-        let box_right = edge_x0;
-        let box_top = edge_y0;
-
-        for (let index = 0; index < coordinateCount - 2; index += 2) {
-            const x = coordinates[index];
-            const y = coordinates[index + 1];
-            // Expand the bounding box to encompass all points.
-            if (x < box_left) box_left = x;
-            else if (x > box_right) box_right = x;
-            if (y < box_top) box_top = y;
-            else if (y > box_bottom) box_bottom = y;
-        }
-
-        // Ensure that the bounding box is large enough to contain all points within its area or on its edges.
-        box_bottom = PureMath.ceiling(box_bottom);
-        box_left = PureMath.floor(box_left);
-        box_right = PureMath.ceiling(box_right);
-        box_top = PureMath.floor(box_top);
-        const box_width = box_right - box_left;
-
-        MESSAGE += `Bounding Box:\n${box_left}, ${box_top}, ${box_right}, ${box_bottom}\n`;
-
-        const edgeCount = coordinateCount >>> 1;
-        // * The test result is the value of ax + by + c for a given x, y coordinate.
-        //// Note: frequently mutating the test result is done to save computations, but it does introduce rounding errors.
-        // * Note for the next 3 arrays: it would likely be faster for memory access to have one flat array instead of 3.
-        //// The more I think about this the more I think I should use a flat array.
-        const edgeData_testResults = new Float32Array(edgeCount);
-        // The x offset amount that is used to increment the test result value on every x iteration.
-        const edgeData_xSteps = new Float32Array(edgeCount);
-        // The amount to add to the test result value for each iteration of y.
-        const edgeData_ySteps = new Float32Array(edgeCount);
-        let edgeIndex = 0;
-
-        for (let index = 0; index < coordinateCount; index += 2) {
-            const edge_x1 = coordinates[index];
-            const edge_y1 = coordinates[index + 1];
-
-            // * a is the coefficient of x in the formula ax + by + c = 0
-            //// It is also the x value of the right side edge normal.
-            const a = edgeData_xSteps[edgeIndex] = edge_y0 - edge_y1; // edgeData[0] is the right normal x value
-            // * b is the coefficient of y in the formula ax + by + c = 0
-            //// It is also the y value of the right side edge normal.
-            const b = edge_x1 - edge_x0;
-            //// * c is the negative dot product of vector (a, b) and vector (x, y) in the formula ax + by + c = 0
-            const c = -a * edge_x0 - b * edge_y0; // The negative dot product of the normal and the point
-
-            // Calculate the offset to use when choosing which corner point of the pixel to test.
-            const pixelOffset_x = a < 0 ? 0 : 1;
-            const pixelOffset_y = b < 0 ? 0 : 1;
-
-            // * The result of the edge test for the top left pixel in the bounding box.
-            //// This value will be mutated for every x and y iteration. This may lead to rounding errors for long edges.
-            edgeData_testResults[edgeIndex] = a * (box_left + pixelOffset_x) + b * (box_top + pixelOffset_y) + c;
-            // The amount to offset the testResult for each increment of y in the test points.
-            edgeData_ySteps[edgeIndex] = b - a * box_width;
-
-            // Prepare for the next iteration.
-            edgeIndex++;
-            edge_x0 = edge_x1;
-            edge_y0 = edge_y1;
-        }
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_width;
-
-        for (let y = box_top; y < box_bottom; y++) {
-            for (let x = box_left; x < box_right; x++) {
-
-                if (x == TESTDATA.x && y == TESTDATA.y) {
-                    MESSAGE += `${coordinates[0]}, ${coordinates[1]}\n${coordinates[2]}, ${coordinates[3]}\n${coordinates[4]}, ${coordinates[5]}\n${coordinates[6]}, ${coordinates[7]}\n`;
-                }
-
-                let fill = true; // Assume that you will fill all pixels
-                // If any test result is 0 or negative, stop testing edges.
-                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) if (edgeData_testResults[edgeIndex] <= 0) {
-                    fill = false;
-                    break;
-                }
-
-                // Every edge must get an updated test result regardless of test pass or fail.
-                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_xSteps[edgeIndex]; // increment testResult by right normal x value
-
-                if (fill) raster_pixels[index] = color;
-
-                index++;
-
-            }
-
-            // Update edge test result for y iteration.
-            for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_ySteps[edgeIndex]; // increment testResult by yOffset
-
-            index += indexYStep;
-        }
-    },
-
-    //////////////////
-    // CONVEX QUADS //
-    //////////////////
-    // It's worth having some methods to handle convex quads efficiently, because they are common shapes and may be used often.
 
     ////////////
     // RASTER //
