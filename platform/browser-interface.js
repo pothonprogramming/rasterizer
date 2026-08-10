@@ -5,25 +5,25 @@
 // The core application layer will be exposed through the global Rasterizer object.
 (() => {
     function handleMouseDownOrMouseUp(event) {
-        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
+        Rasterizer_updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
         const mouseDown = event.type === "mousedown";
         switch (event.button) {
             case 0:
-                Rasterizer.updateMouseLeftIsDown(mouseDown);
+                Rasterizer_updateMouseLeftIsDown(mouseDown);
                 break;
             case 2:
-                Rasterizer.updateMouseRightIsDown(mouseDown);
+                Rasterizer_updateMouseRightIsDown(mouseDown);
                 break;
         }
     }
 
     function handleMouseMove(event) {
-        Rasterizer.updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
+        Rasterizer_updateMousePosition(Math.floor(event.clientX - canvasRectangle.left), Math.floor(event.clientY - canvasRectangle.top));
     }
 
     function handleAnimationFrameRequest(timeStamp) {
         MESSAGE = "";
-        if (Rasterizer.update(timeStamp)) if (Rasterizer.render()) render();
+        if (Rasterizer_update(timeStamp)) if (Rasterizer_render()) render();
 
         animmationFrameRequestId = window.requestAnimationFrame(handleAnimationFrameRequest);
         //window.cancelAnimationFrame(animmationFrameRequestId);
@@ -35,14 +35,14 @@
         const windowInnerWidth = event.target.innerWidth;
         const windowInnerHeight = event.target.innerHeight;
 
-        const maximumRasterHeight = Rasterizer.getMaximumRasterHeight();
-        const maximumRasterWidth = Rasterizer.getMaximumRasterWidth();
+        const maximumRasterHeight = Rasterizer_getMaximumRasterHeight();
+        const maximumRasterWidth = Rasterizer_getMaximumRasterWidth();
 
         // The canvas must never exceed the size of the window or the size of the display raster.
         const canvasWidth = windowInnerWidth < maximumRasterWidth ? windowInnerWidth : maximumRasterWidth;
         const canvasHeight = windowInnerHeight < maximumRasterHeight ? windowInnerHeight : maximumRasterHeight;
 
-        Rasterizer.resizeDisplay(canvasWidth, canvasHeight);
+        Rasterizer_resizeDisplay(canvasWidth, canvasHeight);
         canvas.width = canvasWidth;
         canvas.height = canvasHeight;
         canvasContext2D.imageSmoothingEnabled = false;
@@ -58,8 +58,8 @@
     }
 
     function resetImageData() {
-        displayView = new Uint8ClampedArray(Rasterizer.getDisplayRasterPixels().buffer, 0, Rasterizer.getDisplayRasterPixelCount() * 4);
-        imageData = new ImageData(displayView, Rasterizer.getDisplayRasterWidth(), Rasterizer.getDisplayRasterHeight());
+        displayView = new Uint8ClampedArray(Rasterizer_getDisplayRasterPixels().buffer, 0, Rasterizer_getDisplayRasterPixelCount() * 4);
+        imageData = new ImageData(displayView, Rasterizer_getDisplayRasterWidth(), Rasterizer_getDisplayRasterHeight());
     }
 
     function render() {
