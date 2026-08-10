@@ -22,955 +22,953 @@
 //// Note that points and lines are infinitely small and do not represent pixels, which are better represented by square volumes.
 //// This means that a point does not represent a pixel. A pixel is more like a square in which all edges have a length of 1.
 //// So the points (0, 0), (0.5, 0.5), and (1, 1) all intersect with the pixel at (0, 0).
-const Raster = {
 
-    /////////////////////////////
-    // AXIS ALIGNED RECTANGLES //
-    /////////////////////////////
-    // Functions for working with axis aligned rectangles
 
-    // Maybe this should be called fillOpaqueAxisAlignedRectangle to differentiate it from the transparent fill version.
-    fillAxisAlignedRectangle(raster_pixels, raster_width, rectangle_left, rectangle_top, rectangle_width, rectangle_height, color) {
-        const bottom = PureMath.ceiling(rectangle_top + rectangle_height); // Expand edges to draw all pixels that overlap the rectangle
-        const left = PureMath.floor(rectangle_left);
-        const right = PureMath.ceiling(rectangle_left + rectangle_width);
-        const top = PureMath.floor(rectangle_top);
+/////////////////////////////
+// AXIS ALIGNED RECTANGLES //
+/////////////////////////////
+// Functions for working with axis aligned rectangles
 
-        let index = top * raster_width + left;
-        const indexYStep = raster_width - right + left;
+// Maybe this should be called fillOpaqueAxisAlignedRectangle to differentiate it from the transparent fill version.
+function Raster_fillAxisAlignedRectangle(raster_pixels, raster_width, rectangle_left, rectangle_top, rectangle_width, rectangle_height, color) {
+    const bottom = PureMath_ceiling(rectangle_top + rectangle_height); // Expand edges to draw all pixels that overlap the rectangle
+    const left = PureMath_floor(rectangle_left);
+    const right = PureMath_ceiling(rectangle_left + rectangle_width);
+    const top = PureMath_floor(rectangle_top);
 
-        for (let y = top; y < bottom; y++) {
-            for (let x = left; x < right; x++) {
-                raster_pixels[index] = color;
-                index++;
+    let index = top * raster_width + left;
+    const indexYStep = raster_width - right + left;
+
+    for (let y = top; y < bottom; y++) {
+        for (let x = left; x < right; x++) {
+            raster_pixels[index] = color;
+            index++;
+        }
+        index += indexYStep;
+    }
+}
+
+// This isn't fool proof. You can break it by passing negative rectangle_width or rectangle_height or by passing inverted clip values like clip_left > clip_right.
+function Raster_fillClippedAxisAlignedRectangle(raster_pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, rectangle_left, rectangle_top, rectangle_width, rectangle_height, color) {
+    const bottom = PureMath_ceiling(PureMath_minimum2(clip_bottom, rectangle_top + rectangle_height)); // Expand edges to draw all pixels that overlap the rectangle
+    const left = PureMath_floor(PureMath_maximum2(clip_left, rectangle_left));
+    const right = PureMath_ceiling(PureMath_minimum2(clip_right, rectangle_left + rectangle_width));
+    const top = PureMath_floor(PureMath_maximum2(clip_top, rectangle_top));
+
+    let index = top * raster_width + left;
+    const indexYStep = raster_width - right + left;
+
+    for (let y = top; y < bottom; y++) {
+        for (let x = left; x < right; x++) {
+            raster_pixels[index] = color;
+            index++;
+        }
+        index += indexYStep;
+    }
+}
+
+// Fills an axis aligned rectangle with transparent color within the raster_pixels grid.
+// No bounds checking.
+function Raster_fillTransparentAxisAlignedRectangle(raster_pixels, raster_width, rectangle_left, rectangle_top, rectangle_width, rectangle_height, color) {
+    const bottom = PureMath_ceiling(rectangle_top + rectangle_height); // Expand edges to draw all pixels that overlap the rectangle
+    const left = PureMath_floor(rectangle_left);
+    const right = PureMath_ceiling(rectangle_left + rectangle_width);
+    const top = PureMath_floor(rectangle_top);
+
+    let index = top * raster_width + left;
+    const indexYStep = raster_width - right + left;
+
+    const alpha = color >>> 24;
+    const inverseAlpha = 255 - alpha;
+    const colorBR = color & 0x00ff00ff;
+    const colorAG = (color >>> 8) & 0x00ff00ff;
+
+    for (let y = top; y < bottom; y++) {
+        for (let x = left; x < right; x++) {
+            const baseColor = raster_pixels[index];
+            const baseColorBR = baseColor & 0x00ff00ff;
+            const baseColorAG = (baseColor >> 8) & 0x00ff00ff;
+            const br = (colorBR * alpha + baseColorBR * inverseAlpha) >>> 8;
+            const ag = (colorAG * alpha + baseColorAG * inverseAlpha) >>> 8;
+
+            raster_pixels[index] = ((ag << 8) & 0xff00ff00) | (br & 0x00ff00ff);
+
+            index++;
+        }
+        index += indexYStep;
+    }
+}
+
+/////////////
+// CIRCLES //
+/////////////
+// Functions for drawing circles
+
+// This can be optimized. Circles are symmetrical, so I only need to do 1/2, 1/4, or 1/8th the math to calculate points.
+// It's probably best to access memory contiguously if possible.
+function Raster_fillCircle(pixels, raster_width, circle_x, circle_y, circle_radius, color) {
+    const box_bottom = BitMath_ceiling(circle_y + circle_radius);
+    const box_left = BitMath_floor(circle_x - circle_radius);
+    const box_right = BitMath_ceiling(circle_x + circle_radius);
+    const box_top = BitMath_floor(circle_y - circle_radius);
+
+    const circleRadiusSquared = circle_radius * circle_radius;
+
+    // Set up the first index and row step.
+    let index = box_top * raster_width + box_left;
+    const indexYStep = raster_width - box_right + box_left;
+
+    // You could also break these loops into different quadrants and draw one quadrant at a time.
+    // This would get rid of the pixelEdge branches, but it would also lead to a lot of duplicate code. Not sure which is better.
+    for (let y = box_top; y < box_bottom; y++) {
+        const pixelEdgeY = y < circle_y ? y + 1 : y; // Test the edge that has the least magnitude along the vector
+        const vector_y = pixelEdgeY - circle_y;
+        const vectorYSquared = vector_y * vector_y;
+        for (let x = box_left; x < box_right; x++) {
+            const pixelEdgeX = x < circle_x ? x + 1 : x; // Test the edge that has the least magnitude along the vector
+            const vector_x = pixelEdgeX - circle_x;
+            if (vector_x * vector_x + vectorYSquared < circleRadiusSquared) pixels[index] = color;
+            index++;
+        }
+        index += indexYStep;
+    }
+}
+
+// Running a point in circle test for each point isn't the most efficient way to render a filled circle on the CPU,
+// but this approach lends itself very nicely to clipping, because it's easy to iterate over a rectangular region to get each test point.
+function Raster_fillClippedCircle(pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, circle_x, circle_y, circle_radius, color) {
+    const box_bottom = BitMath_minimum2(BitMath_ceiling(circle_y + circle_radius), clip_bottom);
+    const box_left = BitMath_maximum2(BitMath_floor(circle_x - circle_radius), clip_left);
+    const box_right = BitMath_minimum2(BitMath_ceiling(circle_x + circle_radius), clip_right);
+    const box_top = BitMath_maximum2(BitMath_floor(circle_y - circle_radius), clip_top);
+
+    const circleRadiusSquared = circle_radius * circle_radius;
+
+    // Set up the first index and row step.
+    let index = box_top * raster_width + box_left;
+    const indexYStep = raster_width - box_right + box_left;
+
+    // You could also break these loops into different quadrants and draw one quadrant at a time.
+    // This would get rid of the pixelEdge branches, but it would also lead to a lot of duplicate code. Not sure which is better.
+    for (let y = box_top; y < box_bottom; y++) {
+        const pixelEdgeY = y < circle_y ? y + 1 : y; // Test the edge that has the least magnitude along the vector
+        const vector_y = pixelEdgeY - circle_y;
+        const vectorYSquared = vector_y * vector_y;
+        for (let x = box_left; x < box_right; x++) {
+            const pixelEdgeX = x < circle_x ? x + 1 : x; // Test the edge that has the least magnitude along the vector
+            const vector_x = pixelEdgeX - circle_x;
+            if (vector_x * vector_x + vectorYSquared < circleRadiusSquared) pixels[index] = color;
+            index++;
+        }
+        index += indexYStep;
+    }
+}
+
+// Uses Bresenham's algorithm to draw the outline of the circle.
+// This does not respect conservative edge rasterization.
+function Raster_traceCircleFast(raster_pixels, raster_width, targetX, targetY, diameter, color) {
+    let odd = diameter & 1;
+    const circleRadius = (diameter - odd) * 0.5;
+    odd = odd ^ 1;
+    const centerX = targetX + circleRadius;
+    const centerY = targetY + circleRadius;
+    let x = 0;
+    let y = circleRadius;
+    let d = 1 - circleRadius;
+
+    while (x <= y) {
+        raster_pixels[(centerY + y - odd) * raster_width + centerX + x - odd] = color;
+        raster_pixels[(centerY + x - odd) * raster_width + centerX + y - odd] = color;
+        raster_pixels[(centerY + y - odd) * raster_width + centerX - x] = color;
+        raster_pixels[(centerY + x - odd) * raster_width + centerX - y] = color;
+        raster_pixels[(centerY - y) * raster_width + centerX - x] = color;
+        raster_pixels[(centerY - x) * raster_width + centerX - y] = color;
+        raster_pixels[(centerY - y) * raster_width + centerX + x - odd] = color;
+        raster_pixels[(centerY - x) * raster_width + centerX + y - odd] = color;
+
+        const delta = d + 2 * x + 1;
+        const mask = -(+(delta >= 0));
+        d += 2 * x + 1 + ((mask & (1 - 2 * y)));
+        y += mask;
+        x++;
+    }
+}
+
+/////////////////////
+// CONVEX POLYGONS //
+/////////////////////
+
+// Convex polygons should all be handled the same way
+
+// * Used to draw a a convex polygon from a flat array of point coordinates.
+//// This is meant as a general purpose function. If handling a lot of quads, for example, it would be better to use a function designed specifically for quads.
+//// This function suffers from having to do a lot of looping to handle the unknown number of coordinates that will be passed in.
+// * NOTE: This function expects coordinates in clockwise winding order.
+function Raster_fillConvexPolygon(raster_pixels, raster_width, coordinates, coordinateCount, color) {
+
+    // * Find the bounding box edges.
+    //// By using the last coordinate pair in the array to set initial values, one iteration can be avoided when getting boundaries.
+    // * Note that edge_x0 and edge_y0 are also being defined as the last point in the coordinates array.
+    //// They are defined here for performance, but aren't used to calculate box boundaries.
+    //// This point will become the first point in the first edge that will be tested.
+    let edge_x0 = coordinates[coordinateCount - 2];
+    let edge_y0 = coordinates[coordinateCount - 1];
+    let box_bottom = edge_y0;
+    let box_left = edge_x0;
+    let box_right = edge_x0;
+    let box_top = edge_y0;
+
+    for (let index = 0; index < coordinateCount - 2; index += 2) {
+        const x = coordinates[index];
+        const y = coordinates[index + 1];
+        // Expand the bounding box to encompass all points.
+        if (x < box_left) box_left = x;
+        else if (x > box_right) box_right = x;
+        if (y < box_top) box_top = y;
+        else if (y > box_bottom) box_bottom = y;
+    }
+
+    // Ensure that the bounding box is large enough to contain all points within its area or on its edges.
+    box_bottom = PureMath_ceiling(box_bottom);
+    box_left = PureMath_floor(box_left);
+    box_right = PureMath_ceiling(box_right);
+    box_top = PureMath_floor(box_top);
+    const box_width = box_right - box_left;
+
+    const edgeCount = coordinateCount >>> 1;
+    // * The test result is the value of ax + by + c for a given x, y coordinate.
+    //// Note: frequently mutating the test result is done to save computations, but it does introduce rounding errors.
+    // * Note for the next 3 arrays: it would likely be faster for memory access to have one flat array instead of 3.
+    //// The more I think about this the more I think I should use a flat array.
+    const edgeData_testResults = new Float32Array(edgeCount);
+    // The x offset amount that is used to increment the test result value on every x iteration.
+    const edgeData_xSteps = new Float32Array(edgeCount);
+    // The amount to add to the test result value for each iteration of y.
+    const edgeData_ySteps = new Float32Array(edgeCount);
+    let edgeIndex = 0;
+
+    for (let index = 0; index < coordinateCount; index += 2) {
+        const edge_x1 = coordinates[index];
+        const edge_y1 = coordinates[index + 1];
+
+        // * a is the coefficient of x in the formula ax + by + c = 0
+        //// It is also the x value of the right side edge normal.
+        const a = edgeData_xSteps[edgeIndex] = edge_y0 - edge_y1; // edgeData[0] is the right normal x value
+        // * b is the coefficient of y in the formula ax + by + c = 0
+        //// It is also the y value of the right side edge normal.
+        const b = edge_x1 - edge_x0;
+        //// * c is the negative dot product of vector (a, b) and vector (x, y) in the formula ax + by + c = 0
+        const c = -a * edge_x0 - b * edge_y0; // The negative dot product of the normal and the point
+
+        // Calculate the offset to use when choosing which corner point of the pixel to test.
+        const pixelOffset_x = a < 0 ? 0 : 1;
+        const pixelOffset_y = b < 0 ? 0 : 1;
+
+        // * The result of the edge test for the top left pixel in the bounding box.
+        //// This value will be mutated for every x and y iteration. This may lead to rounding errors for long edges.
+        edgeData_testResults[edgeIndex] = a * (box_left + pixelOffset_x) + b * (box_top + pixelOffset_y) + c;
+        // The amount to offset the testResult for each increment of y in the test points.
+        edgeData_ySteps[edgeIndex] = b - a * box_width;
+
+        // Prepare for the next iteration.
+        edgeIndex++;
+        edge_x0 = edge_x1;
+        edge_y0 = edge_y1;
+    }
+
+    // Set up the first index and row step.
+    let index = box_top * raster_width + box_left;
+    const indexYStep = raster_width - box_width;
+
+    for (let y = box_top; y < box_bottom; y++) {
+        for (let x = box_left; x < box_right; x++) {
+
+            if (x == TESTDATA.x && y == TESTDATA.y) {
+                MESSAGE += `Bounding Box:\n${box_left}, ${box_top}, ${box_right}, ${box_bottom}\n`;
+                MESSAGE += `${coordinates[0]}, ${coordinates[1]}\n${coordinates[2]}, ${coordinates[3]}\n${coordinates[4]}, ${coordinates[5]}\n${coordinates[6]}, ${coordinates[7]}\n`;
             }
+
+            let fill = true; // Assume that you will fill all pixels
+            // If any test result is 0 or negative, stop testing edges.
+            for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) if (edgeData_testResults[edgeIndex] <= 0) {
+                fill = false;
+                break;
+            }
+
+            // Every edge must get an updated test result regardless of test pass or fail.
+            for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_xSteps[edgeIndex]; // increment testResult by right normal x value
+
+            if (fill) raster_pixels[index] = color;
+
+            index++;
+
+        }
+
+        // Update edge test result for y iteration.
+        for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_ySteps[edgeIndex]; // increment testResult by yOffset
+
+        index += indexYStep;
+    }
+}
+
+//////////////////
+// CONVEX QUADS //
+//////////////////
+// It's worth having some methods to handle convex quads efficiently, because they are common shapes and may be used often.
+
+///////////
+// LINES //
+///////////
+// Functions for drawing lines
+
+// Does not protect against buffer overflow.
+function Raster_fillHorizontalLine(raster_pixels, raster_width, line_x, line_y, lineWidth, color) {
+    const firstIndex = line_y * raster_width + line_x;
+    const lastIndex = firstIndex + lineWidth;
+    for (let index = firstIndex; index < lastIndex; index++) raster_pixels[index] = color;
+}
+
+// This method is not meant to handle negative line width. Lines will always be drawn starting at the leftmost coordinate.
+function Raster_fillClippedHorizontalLine(raster_pixels, raster_width, raster_height, lineLeftX, line_y, lineWidth, color) {
+    let lineRightX = lineLeftX + lineWidth; // Technically this is 1 greater than the true right x of the line, but the last index is never drawn.
+    if (lineLeftX >= raster_width || lineRightX <= 0 || line_y < 0 || line_y >= raster_height) return;
+    if (lineLeftX < 0) lineLeftX = 0;
+    if (lineRightX > raster_width) lineRightX = raster_width; // Still technically 1 greater than the maximum right x of the line.
+
+    const firstIndex = line_y * raster_width + lineLeftX;
+    const lastIndex = firstIndex + lineRightX - lineLeftX;
+
+    for (let index = firstIndex; index < lastIndex; index++) raster_pixels[index] = color;
+}
+
+// Does not protect against buffer overflow.
+function Raster_fillVerticalLine(raster_pixels, raster_width, line_x, line_y, lineHeight, color) {
+    const firstIndex = line_y * raster_width + line_x;
+    const lastIndex = firstIndex + lineHeight * raster_width;
+    for (let index = firstIndex; index < lastIndex; index += raster_width) raster_pixels[index] = color;
+}
+
+// This method is not meant to handle negative lineHeight.
+function Raster_fillClippedVerticalLine(raster_pixels, raster_width, raster_height, line_x, lineTopY, lineHeight, color) {
+    let lineBottomY = lineTopY + lineHeight; // This is technically 1 greater than the actual bottom y of the line.
+    if (lineBottomY <= 0 || lineTopY >= raster_height || line_x < 0 || line_x >= raster_width) return;
+    if (lineBottomY > raster_height) lineBottomY = raster_height; // Still 1 greater than the actual bottom y of the line.
+    if (lineTopY < 0) lineTopY = 0;
+
+    const firstIndex = lineTopY * raster_width + line_x;
+    const lastIndex = lineBottomY * raster_width + line_x; // The last index is never drawn. Use <= in loop to draw last index.
+    for (let index = firstIndex; index < lastIndex; index += raster_width) raster_pixels[index] = color;
+}
+
+function Raster_traceLineSegment(raster_pixels, raster_width, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
+    const absoluteRise = BitMath_absolute(lineSegmentY1 - lineSegmentY0);
+    const absoluteRun = BitMath_absolute(lineSegmentX1 - lineSegmentX0);
+    const stepX = lineSegmentX0 < lineSegmentX1 ? 1 : -1;
+    const stepY = lineSegmentY0 < lineSegmentY1 ? 1 : -1;
+
+    let index = lineSegmentY0 * raster_width + lineSegmentX0;
+    const lastIndex = lineSegmentY1 * raster_width + lineSegmentX1;
+    const indexYStep = stepY * raster_width;
+
+    // If the line is steep, then y will always be incremented, however x will not always be incremented.
+    // Else if the line is not steep, then x will always be incremented, but y will not always be incremented.
+    if (absoluteRise > absoluteRun) {
+        let error = absoluteRise >> 1;
+        while (index !== lastIndex) {
+            raster_pixels[index] = color;
             index += indexYStep;
-        }
-    },
-
-    // This isn't fool proof. You can break it by passing negative rectangle_width or rectangle_height or by passing inverted clip values like clip_left > clip_right.
-    fillClippedAxisAlignedRectangle(raster_pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, rectangle_left, rectangle_top, rectangle_width, rectangle_height, color) {
-        const bottom = PureMath.ceiling(PureMath.minimum2(clip_bottom, rectangle_top + rectangle_height)); // Expand edges to draw all pixels that overlap the rectangle
-        const left = PureMath.floor(PureMath.maximum2(clip_left, rectangle_left));
-        const right = PureMath.ceiling(PureMath.minimum2(clip_right, rectangle_left + rectangle_width));
-        const top = PureMath.floor(PureMath.maximum2(clip_top, rectangle_top));
-
-        let index = top * raster_width + left;
-        const indexYStep = raster_width - right + left;
-
-        for (let y = top; y < bottom; y++) {
-            for (let x = left; x < right; x++) {
-                raster_pixels[index] = color;
-                index++;
-            }
-            index += indexYStep;
-        }
-    },
-
-    // Fills an axis aligned rectangle with transparent color within the raster_pixels grid.
-    // No bounds checking.
-    fillTransparentAxisAlignedRectangle(raster_pixels, raster_width, rectangle_left, rectangle_top, rectangle_width, rectangle_height, color) {
-        const bottom = PureMath.ceiling(rectangle_top + rectangle_height); // Expand edges to draw all pixels that overlap the rectangle
-        const left = PureMath.floor(rectangle_left);
-        const right = PureMath.ceiling(rectangle_left + rectangle_width);
-        const top = PureMath.floor(rectangle_top);
-
-        let index = top * raster_width + left;
-        const indexYStep = raster_width - right + left;
-
-        const alpha = color >>> 24;
-        const inverseAlpha = 255 - alpha;
-        const colorBR = color & 0x00ff00ff;
-        const colorAG = (color >>> 8) & 0x00ff00ff;
-
-        for (let y = top; y < bottom; y++) {
-            for (let x = left; x < right; x++) {
-                const baseColor = raster_pixels[index];
-                const baseColorBR = baseColor & 0x00ff00ff;
-                const baseColorAG = (baseColor >> 8) & 0x00ff00ff;
-                const br = (colorBR * alpha + baseColorBR * inverseAlpha) >>> 8;
-                const ag = (colorAG * alpha + baseColorAG * inverseAlpha) >>> 8;
-
-                raster_pixels[index] = ((ag << 8) & 0xff00ff00) | (br & 0x00ff00ff);
-
-                index++;
-            }
-            index += indexYStep;
-        }
-    },
-
-    /////////////
-    // CIRCLES //
-    /////////////
-    // Functions for drawing circles
-
-    // This can be optimized. Circles are symmetrical, so I only need to do 1/2, 1/4, or 1/8th the math to calculate points.
-    // It's probably best to access memory contiguously if possible.
-    fillCircle(pixels, raster_width, circle_x, circle_y, circle_radius, color) {
-        const box_bottom = BitMath.ceiling(circle_y + circle_radius);
-        const box_left = BitMath.floor(circle_x - circle_radius);
-        const box_right = BitMath.ceiling(circle_x + circle_radius);
-        const box_top = BitMath.floor(circle_y - circle_radius);
-
-        const circleRadiusSquared = circle_radius * circle_radius;
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_right + box_left;
-
-        // You could also break these loops into different quadrants and draw one quadrant at a time.
-        // This would get rid of the pixelEdge branches, but it would also lead to a lot of duplicate code. Not sure which is better.
-        for (let y = box_top; y < box_bottom; y++) {
-            const pixelEdgeY = y < circle_y ? y + 1 : y; // Test the edge that has the least magnitude along the vector
-            const vector_y = pixelEdgeY - circle_y;
-            const vectorYSquared = vector_y * vector_y;
-            for (let x = box_left; x < box_right; x++) {
-                const pixelEdgeX = x < circle_x ? x + 1 : x; // Test the edge that has the least magnitude along the vector
-                const vector_x = pixelEdgeX - circle_x;
-                if (vector_x * vector_x + vectorYSquared < circleRadiusSquared) pixels[index] = color;
-                index++;
-            }
-            index += indexYStep;
-        }
-    },
-
-    // Running a point in circle test for each point isn't the most efficient way to render a filled circle on the CPU,
-    // but this approach lends itself very nicely to clipping, because it's easy to iterate over a rectangular region to get each test point.
-    fillClippedCircle(pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, circle_x, circle_y, circle_radius, color) {
-        const box_bottom = BitMath.minimum2(BitMath.ceiling(circle_y + circle_radius), clip_bottom);
-        const box_left = BitMath.maximum2(BitMath.floor(circle_x - circle_radius), clip_left);
-        const box_right = BitMath.minimum2(BitMath.ceiling(circle_x + circle_radius), clip_right);
-        const box_top = BitMath.maximum2(BitMath.floor(circle_y - circle_radius), clip_top);
-
-        const circleRadiusSquared = circle_radius * circle_radius;
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_right + box_left;
-
-        // You could also break these loops into different quadrants and draw one quadrant at a time.
-        // This would get rid of the pixelEdge branches, but it would also lead to a lot of duplicate code. Not sure which is better.
-        for (let y = box_top; y < box_bottom; y++) {
-            const pixelEdgeY = y < circle_y ? y + 1 : y; // Test the edge that has the least magnitude along the vector
-            const vector_y = pixelEdgeY - circle_y;
-            const vectorYSquared = vector_y * vector_y;
-            for (let x = box_left; x < box_right; x++) {
-                const pixelEdgeX = x < circle_x ? x + 1 : x; // Test the edge that has the least magnitude along the vector
-                const vector_x = pixelEdgeX - circle_x;
-                if (vector_x * vector_x + vectorYSquared < circleRadiusSquared) pixels[index] = color;
-                index++;
-            }
-            index += indexYStep;
-        }
-    },
-
-    // Uses Bresenham's algorithm to draw the outline of the circle.
-    // This does not respect conservative edge rasterization.
-    traceCircleFast(raster_pixels, raster_width, targetX, targetY, diameter, color) {
-        let odd = diameter & 1;
-        const circleRadius = (diameter - odd) * 0.5;
-        odd = odd ^ 1;
-        const centerX = targetX + circleRadius;
-        const centerY = targetY + circleRadius;
-        let x = 0;
-        let y = circleRadius;
-        let d = 1 - circleRadius;
-
-        while (x <= y) {
-            raster_pixels[(centerY + y - odd) * raster_width + centerX + x - odd] = color;
-            raster_pixels[(centerY + x - odd) * raster_width + centerX + y - odd] = color;
-            raster_pixels[(centerY + y - odd) * raster_width + centerX - x] = color;
-            raster_pixels[(centerY + x - odd) * raster_width + centerX - y] = color;
-            raster_pixels[(centerY - y) * raster_width + centerX - x] = color;
-            raster_pixels[(centerY - x) * raster_width + centerX - y] = color;
-            raster_pixels[(centerY - y) * raster_width + centerX + x - odd] = color;
-            raster_pixels[(centerY - x) * raster_width + centerX + y - odd] = color;
-
-            const delta = d + 2 * x + 1;
-            const mask = -(+(delta >= 0));
-            d += 2 * x + 1 + ((mask & (1 - 2 * y)));
-            y += mask;
-            x++;
-        }
-    },
-
-    /////////////////////
-    // CONVEX POLYGONS //
-    /////////////////////
-
-    // Convex polygons should all be handled the same way
-
-    // * Used to draw a a convex polygon from a flat array of point coordinates.
-    //// This is meant as a general purpose function. If handling a lot of quads, for example, it would be better to use a function designed specifically for quads.
-    //// This function suffers from having to do a lot of looping to handle the unknown number of coordinates that will be passed in.
-    // * NOTE: This function expects coordinates in clockwise winding order.
-    fillConvexPolygon(raster_pixels, raster_width, coordinates, coordinateCount, color) {
-
-        // * Find the bounding box edges.
-        //// By using the last coordinate pair in the array to set initial values, one iteration can be avoided when getting boundaries.
-        // * Note that edge_x0 and edge_y0 are also being defined as the last point in the coordinates array.
-        //// They are defined here for performance, but aren't used to calculate box boundaries.
-        //// This point will become the first point in the first edge that will be tested.
-        let edge_x0 = coordinates[coordinateCount - 2];
-        let edge_y0 = coordinates[coordinateCount - 1];
-        let box_bottom = edge_y0;
-        let box_left = edge_x0;
-        let box_right = edge_x0;
-        let box_top = edge_y0;
-
-        for (let index = 0; index < coordinateCount - 2; index += 2) {
-            const x = coordinates[index];
-            const y = coordinates[index + 1];
-            // Expand the bounding box to encompass all points.
-            if (x < box_left) box_left = x;
-            else if (x > box_right) box_right = x;
-            if (y < box_top) box_top = y;
-            else if (y > box_bottom) box_bottom = y;
-        }
-
-        // Ensure that the bounding box is large enough to contain all points within its area or on its edges.
-        box_bottom = PureMath.ceiling(box_bottom);
-        box_left = PureMath.floor(box_left);
-        box_right = PureMath.ceiling(box_right);
-        box_top = PureMath.floor(box_top);
-        const box_width = box_right - box_left;
-
-        const edgeCount = coordinateCount >>> 1;
-        // * The test result is the value of ax + by + c for a given x, y coordinate.
-        //// Note: frequently mutating the test result is done to save computations, but it does introduce rounding errors.
-        // * Note for the next 3 arrays: it would likely be faster for memory access to have one flat array instead of 3.
-        //// The more I think about this the more I think I should use a flat array.
-        const edgeData_testResults = new Float32Array(edgeCount);
-        // The x offset amount that is used to increment the test result value on every x iteration.
-        const edgeData_xSteps = new Float32Array(edgeCount);
-        // The amount to add to the test result value for each iteration of y.
-        const edgeData_ySteps = new Float32Array(edgeCount);
-        let edgeIndex = 0;
-
-        for (let index = 0; index < coordinateCount; index += 2) {
-            const edge_x1 = coordinates[index];
-            const edge_y1 = coordinates[index + 1];
-
-            // * a is the coefficient of x in the formula ax + by + c = 0
-            //// It is also the x value of the right side edge normal.
-            const a = edgeData_xSteps[edgeIndex] = edge_y0 - edge_y1; // edgeData[0] is the right normal x value
-            // * b is the coefficient of y in the formula ax + by + c = 0
-            //// It is also the y value of the right side edge normal.
-            const b = edge_x1 - edge_x0;
-            //// * c is the negative dot product of vector (a, b) and vector (x, y) in the formula ax + by + c = 0
-            const c = -a * edge_x0 - b * edge_y0; // The negative dot product of the normal and the point
-
-            // Calculate the offset to use when choosing which corner point of the pixel to test.
-            const pixelOffset_x = a < 0 ? 0 : 1;
-            const pixelOffset_y = b < 0 ? 0 : 1;
-
-            // * The result of the edge test for the top left pixel in the bounding box.
-            //// This value will be mutated for every x and y iteration. This may lead to rounding errors for long edges.
-            edgeData_testResults[edgeIndex] = a * (box_left + pixelOffset_x) + b * (box_top + pixelOffset_y) + c;
-            // The amount to offset the testResult for each increment of y in the test points.
-            edgeData_ySteps[edgeIndex] = b - a * box_width;
-
-            // Prepare for the next iteration.
-            edgeIndex++;
-            edge_x0 = edge_x1;
-            edge_y0 = edge_y1;
-        }
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_width;
-
-        for (let y = box_top; y < box_bottom; y++) {
-            for (let x = box_left; x < box_right; x++) {
-
-                if (x == TESTDATA.x && y == TESTDATA.y) {
-                    MESSAGE += `Bounding Box:\n${box_left}, ${box_top}, ${box_right}, ${box_bottom}\n`;
-                    MESSAGE += `${coordinates[0]}, ${coordinates[1]}\n${coordinates[2]}, ${coordinates[3]}\n${coordinates[4]}, ${coordinates[5]}\n${coordinates[6]}, ${coordinates[7]}\n`;
-                }
-
-                let fill = true; // Assume that you will fill all pixels
-                // If any test result is 0 or negative, stop testing edges.
-                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) if (edgeData_testResults[edgeIndex] <= 0) {
-                    fill = false;
-                    break;
-                }
-
-                // Every edge must get an updated test result regardless of test pass or fail.
-                for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_xSteps[edgeIndex]; // increment testResult by right normal x value
-
-                if (fill) raster_pixels[index] = color;
-
-                index++;
-
-            }
-
-            // Update edge test result for y iteration.
-            for (let edgeIndex = 0; edgeIndex < edgeCount; edgeIndex++) edgeData_testResults[edgeIndex] += edgeData_ySteps[edgeIndex]; // increment testResult by yOffset
-
-            index += indexYStep;
-        }
-    },
-
-    //////////////////
-    // CONVEX QUADS //
-    //////////////////
-    // It's worth having some methods to handle convex quads efficiently, because they are common shapes and may be used often.
-
-    ///////////
-    // LINES //
-    ///////////
-    // Functions for drawing lines
-
-    // Does not protect against buffer overflow.
-    fillHorizontalLine(raster_pixels, raster_width, line_x, line_y, lineWidth, color) {
-        const firstIndex = line_y * raster_width + line_x;
-        const lastIndex = firstIndex + lineWidth;
-        for (let index = firstIndex; index < lastIndex; index++) raster_pixels[index] = color;
-    },
-
-    // This method is not meant to handle negative line width. Lines will always be drawn starting at the leftmost coordinate.
-    fillClippedHorizontalLine(raster_pixels, raster_width, raster_height, lineLeftX, line_y, lineWidth, color) {
-        let lineRightX = lineLeftX + lineWidth; // Technically this is 1 greater than the true right x of the line, but the last index is never drawn.
-        if (lineLeftX >= raster_width || lineRightX <= 0 || line_y < 0 || line_y >= raster_height) return;
-        if (lineLeftX < 0) lineLeftX = 0;
-        if (lineRightX > raster_width) lineRightX = raster_width; // Still technically 1 greater than the maximum right x of the line.
-
-        const firstIndex = line_y * raster_width + lineLeftX;
-        const lastIndex = firstIndex + lineRightX - lineLeftX;
-
-        for (let index = firstIndex; index < lastIndex; index++) raster_pixels[index] = color;
-    },
-
-    // Does not protect against buffer overflow.
-    fillVerticalLine(raster_pixels, raster_width, line_x, line_y, lineHeight, color) {
-        const firstIndex = line_y * raster_width + line_x;
-        const lastIndex = firstIndex + lineHeight * raster_width;
-        for (let index = firstIndex; index < lastIndex; index += raster_width) raster_pixels[index] = color;
-    },
-
-    // This method is not meant to handle negative lineHeight.
-    fillClippedVerticalLine(raster_pixels, raster_width, raster_height, line_x, lineTopY, lineHeight, color) {
-        let lineBottomY = lineTopY + lineHeight; // This is technically 1 greater than the actual bottom y of the line.
-        if (lineBottomY <= 0 || lineTopY >= raster_height || line_x < 0 || line_x >= raster_width) return;
-        if (lineBottomY > raster_height) lineBottomY = raster_height; // Still 1 greater than the actual bottom y of the line.
-        if (lineTopY < 0) lineTopY = 0;
-
-        const firstIndex = lineTopY * raster_width + line_x;
-        const lastIndex = lineBottomY * raster_width + line_x; // The last index is never drawn. Use <= in loop to draw last index.
-        for (let index = firstIndex; index < lastIndex; index += raster_width) raster_pixels[index] = color;
-    },
-
-    traceLineSegment(raster_pixels, raster_width, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
-        const absoluteRise = BitMath.absolute(lineSegmentY1 - lineSegmentY0);
-        const absoluteRun = BitMath.absolute(lineSegmentX1 - lineSegmentX0);
-        const stepX = lineSegmentX0 < lineSegmentX1 ? 1 : -1;
-        const stepY = lineSegmentY0 < lineSegmentY1 ? 1 : -1;
-
-        let index = lineSegmentY0 * raster_width + lineSegmentX0;
-        const lastIndex = lineSegmentY1 * raster_width + lineSegmentX1;
-        const indexYStep = stepY * raster_width;
-
-        // If the line is steep, then y will always be incremented, however x will not always be incremented.
-        // Else if the line is not steep, then x will always be incremented, but y will not always be incremented.
-        if (absoluteRise > absoluteRun) {
-            let error = absoluteRise >> 1;
-            while (index !== lastIndex) {
-                raster_pixels[index] = color;
-                index += indexYStep;
-                error -= absoluteRun;
-                if (error < 0) {
-                    index += stepX;
-                    error += absoluteRise;
-                }
-            }
-        } else {
-            let error = absoluteRun >> 1;
-            while (index !== lastIndex) {
-                raster_pixels[index] = color;
+            error -= absoluteRun;
+            if (error < 0) {
                 index += stepX;
-                error -= absoluteRise;
-                if (error < 0) {
-                    index += indexYStep;
-                    error += absoluteRun;
-                }
+                error += absoluteRise;
             }
         }
-        raster_pixels[index] = color; // Draw the last pixel in the line segment.
-    },
-
-    traceLineSegmentClipped(raster_pixels, raster_width, raster_height, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
-        let t0 = 0; // time along the line segment at point0
-        let t1 = 1; // time along the line segment at point1
-        let deltaX = lineSegmentX1 - lineSegmentX0; // rate of change along x axis
-        let deltaY = lineSegmentY1 - lineSegmentY0; // rate of change along y axis
-
-        const values = [-deltaX, lineSegmentX0, deltaX, raster_width - 1 - lineSegmentX0, -deltaY, lineSegmentY0, deltaY, raster_height - 1 - lineSegmentY0];
-
-        for (let i = 0; i < 8; i += 2) {
-            let rateOfChange = values[i];
-            let distanceToEdge = values[i + 1];
-            if (rateOfChange === 0) { // A perfectly vertical or horizontal line
-                if (distanceToEdge < 0) return;
-                continue;
-            }
-            let t2 = distanceToEdge / rateOfChange; // time along the line segment relative to edge
-            if (rateOfChange < 0) {
-                if (t2 > t1) return; // time should not exceed high constraint of t1
-                if (t2 > t0) t0 = t2; // time should exceed low constraint of t0
-            } else {
-                if (t2 < t0) return; // time should not be less than low constraint of t0
-                if (t2 < t1) t1 = t2; // time should be less than high constraint of t1
-            }
-        }
-
-        const x0 = lineSegmentX0;
-        const y0 = lineSegmentY0;
-
-        // Set new values. They may be the same or they may be updated by clipping.
-        lineSegmentX0 = BitMath.floor(x0 + deltaX * t0);
-        lineSegmentY0 = BitMath.floor(y0 + deltaY * t0);
-        lineSegmentX1 = BitMath.floor(x0 + deltaX * t1);
-        lineSegmentY1 = BitMath.floor(y0 + deltaY * t1);
-
-        const absoluteRise = BitMath.absolute(lineSegmentY1 - lineSegmentY0); // Must recompute rise with new values
-        const absoluteRun = BitMath.absolute(lineSegmentX1 - lineSegmentX0); // Must recompute run with new values
-        const stepX = deltaX > 0 ? 1 : -1;
-        const stepY = deltaY > 0 ? 1 : -1;
-
-        let index = lineSegmentY0 * raster_width + lineSegmentX0;
-        const lastIndex = lineSegmentY1 * raster_width + lineSegmentX1;
-        const indexYStep = stepY * raster_width;
-
-        // If the line is steep, then y will always be incremented, however x will not always be incremented.
-        // Else if the line is not steep, then x will always be incremented, but y will not always be incremented.
-        if (absoluteRise > absoluteRun) {
-            let error = absoluteRise >> 1;
-            while (index !== lastIndex) {
-                raster_pixels[index] = color;
+    } else {
+        let error = absoluteRun >> 1;
+        while (index !== lastIndex) {
+            raster_pixels[index] = color;
+            index += stepX;
+            error -= absoluteRise;
+            if (error < 0) {
                 index += indexYStep;
-                error -= absoluteRun;
-                if (error < 0) {
-                    index += stepX;
-                    error += absoluteRise;
-                }
+                error += absoluteRun;
             }
+        }
+    }
+    raster_pixels[index] = color; // Draw the last pixel in the line segment.
+}
+
+function Raster_traceLineSegmentClipped(raster_pixels, raster_width, raster_height, lineSegmentX0, lineSegmentY0, lineSegmentX1, lineSegmentY1, color) {
+    let t0 = 0; // time along the line segment at point0
+    let t1 = 1; // time along the line segment at point1
+    let deltaX = lineSegmentX1 - lineSegmentX0; // rate of change along x axis
+    let deltaY = lineSegmentY1 - lineSegmentY0; // rate of change along y axis
+
+    const values = [-deltaX, lineSegmentX0, deltaX, raster_width - 1 - lineSegmentX0, -deltaY, lineSegmentY0, deltaY, raster_height - 1 - lineSegmentY0];
+
+    for (let i = 0; i < 8; i += 2) {
+        let rateOfChange = values[i];
+        let distanceToEdge = values[i + 1];
+        if (rateOfChange === 0) { // A perfectly vertical or horizontal line
+            if (distanceToEdge < 0) return;
+            continue;
+        }
+        let t2 = distanceToEdge / rateOfChange; // time along the line segment relative to edge
+        if (rateOfChange < 0) {
+            if (t2 > t1) return; // time should not exceed high constraint of t1
+            if (t2 > t0) t0 = t2; // time should exceed low constraint of t0
         } else {
-            let error = absoluteRun >> 1;
-            while (index !== lastIndex) {
-                raster_pixels[index] = color;
-                index += stepX;
-                error -= absoluteRise;
-                if (error < 0) {
-                    index += indexYStep;
-                    error += absoluteRun;
-                }
-            }
-        }
-        raster_pixels[index] = color; // Draw the last pixel in the line segment.
-    },
-
-    ////////////
-    // PIXELS // Functions for drawing individual pixels
-    ////////////
-
-    // pixel_x and pixel_y must be integers, not floats.
-    fillPixel(raster_pixels, raster_width, pixel_x, pixel_y, color) {
-        raster_pixels[pixel_y * raster_width + pixel_x] = color;
-    },
-
-    // * pixelCoordinates is a flat array of pixel coordinates in the form x0, y0, x1, y1, x2, y2...
-    // * colors is a flat array of 32 bit int color values.
-    fillPixels(raster_pixels, raster_width, pixelCoordinates, colors, coordinateCount) {
-        let colorIndex = 0;
-        for (let xIndex = 0; xIndex < coordinateCount; xIndex += 2) {
-            let yIndex = xIndex + 1;
-            raster_pixels[pixelCoordinates[yIndex] * raster_width + pixelCoordinates[xIndex]] = colors[colorIndex];
-            colorIndex ++;
-        }
-    },
-
-    // Colors are in aabbggrr format
-    fillTransparentPixel(raster_pixels, raster_width, pixel_x, pixel_y, color) {
-        const index = pixel_y * raster_width + pixel_x;
-
-        const baseColor = raster_pixels[index];
-
-        const alpha = color >>> 24;
-        const inverseAlpha = 255 - alpha;
-
-        const br = ((baseColor & 0x00ff00ff) * alpha + (color & 0x00ff00ff) * inverseAlpha) >>> 8;
-        const ag = (((baseColor >>> 8) & 0x00ff00ff) * alpha + ((color >>> 8) & 0x00ff00ff) * inverseAlpha) >>> 8;
-
-        raster_pixels[index] = (ag << 8 & 0xff00ff00) | (br & 0x00ff00ff);
-    },
-
-    // Only fills the pixel if it is inside the clip boundaries.
-    // These boundaries should never surpass the raster width and height.
-    // pixel_x and pixel_y must be an integer, not a float.
-    fillClippedPixel(raster_pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, pixel_x, pixel_y, color) {
-        if (pixel_x < clip_left || pixel_y < clip_top || pixel_x > clip_right || pixel_y > clip_bottom) return;
-        raster_pixels[pixel_y * raster_width + pixel_x] = color;
-    },
-
-    ////////////
-    // RASTER //
-    ////////////
-    // Functions for working with rasters, which are essentially arrays of color values that have a width and height
-
-    // I messed with this function without testing it. Not sure if it still works.
-    copyOpaquePixels(sourceRaster_pixels, sourceRaster_width, sourceRaster_height, targetRaster_pixels, targetRaster_width, target_x, target_y) {
-        const bottom = target_y + sourceRaster_height;
-        const right = target_x + sourceRaster_width;
-
-        let sourceIndex = 0;
-        for (let y = target_y; y < bottom; y++) {
-            let firstIndexInTargetRow = y * targetRaster_width; // can be optimized further.
-            for (let x = target_x; x < right; x++) {
-                const sourceValue = sourceRaster_pixels[sourceIndex];
-                const mask = -((sourceValue >>> 24) & 0xff !== 0);
-                const targetIndex = firstIndexInTargetRow + x;
-                targetRaster_pixels[targetIndex] = (sourceValue & mask) | (targetRaster_pixels[targetIndex] & ~mask);
-                sourceIndex++;
-            }
-        }
-    },
-
-    copyOpaquePixelsClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY) {
-        const left = BitMath.clampZero(targetX);
-        const right = BitMath.clampHigh(targetX + sourceWidth, targetWidth);
-        if (left > right) return;
-
-        const top = BitMath.clampZero(targetY);
-        const bottom = BitMath.clampHigh(targetY + sourceHeight, targetHeight);
-        if (top > bottom) return;
-
-        for (let pixelY = top; pixelY < bottom; pixelY++) {
-            const sourcePixelY = pixelY - targetY;
-            for (let pixelX = left; pixelX < right; pixelX++) {
-                const sourceValue = sourcePixels[sourcePixelY * sourceWidth + (pixelX - targetX)];
-                const mask = -((sourceValue >>> 24) & 0xff !== 0);
-                const targetIndex = pixelY * targetWidth + pixelX;
-                targetPixels[targetIndex] = (sourceValue & mask) | (targetPixels[targetIndex] & ~mask);
-            }
-        }
-    },
-
-    // This method could write outside of the target buffer, so only use it if you know for sure that the source is within the target bounds.
-    // Copies all pixels from the source into the target starting at the specified position in the target.
-    copyPixels(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY) {
-        const lastTargetRow = targetY + sourceHeight;
-        const lastTargetColumn = targetX + sourceWidth;
-
-        let sourceIndex = 0; // This method always copies the entire sourcePixels array in contiguous order, so we don't need to loop 
-        for (let targetRow = targetY; targetRow < lastTargetRow; targetRow++) {
-            const firstIndexInTargetRow = targetRow * targetWidth; // The first index in the target row.
-            for (let targetColumn = targetX; targetColumn < lastTargetColumn; targetColumn++) {
-                targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[sourceIndex];
-                sourceIndex++;
-            }
-        }
-    },
-
-    copyPixelsClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY) {
-        const firstTargetColumn = BitMath.clampZero(targetX);
-        const lastTargetColumn = BitMath.clampHigh(targetX + sourceWidth, targetWidth);
-        if (firstTargetColumn > lastTargetColumn) return;
-
-        const firstTargetRow = BitMath.clampZero(targetY);
-        const lastTargetRow = BitMath.clampHigh(targetY + sourceHeight, targetHeight);
-        if (firstTargetRow > lastTargetRow) return;
-
-        for (let targetRow = firstTargetRow; targetRow < lastTargetRow; targetRow++) {
-            const firstIndexInTargetRow = targetRow * targetWidth;
-            const sourceRow = targetRow - targetY;
-            for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++)
-                targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[sourceRow * sourceWidth + targetColumn - targetX];
-        }
-    },
-
-    // The idea is to duplicate each pixel in the sourcePixels array by a factor of scale in 2 dimensions.
-    // So if scale = 2, 1 pixel will turn into 4 pixels, filling 2 columns on the x axis and 2 rows on the y axis.
-    //
-    // Example: scale = 2
-    // 
-    // [0, 1
-    //  2, 3] source array
-    //
-    // [0, 0, 1, 1,
-    //  0, 0, 1, 1,
-    //  2, 2, 3, 3,
-    //  2, 2, 3, 3] target array
-    //
-    // To do this, loop over each row *scale* number of times and copy each pixel in the row *scale* number of times to the target array.
-    copyPixelsScaled(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY, scale) {
-        for (let sourceRow = 0; sourceRow < sourceHeight; sourceRow++) {
-            const firstIndexInSourceRow = sourceRow * sourceWidth;
-            const targetRow = sourceRow * scale + targetY;
-            for (let rowOffset = 0; rowOffset < scale; rowOffset++) {
-                const firstIndexInTargetRow = (targetRow + rowOffset) * targetWidth;
-                for (let sourceColumn = 0; sourceColumn < sourceWidth; sourceColumn++) {
-                    const sourcePixelValue = sourcePixels[firstIndexInSourceRow + sourceColumn];
-                    const targetIndex = firstIndexInTargetRow + sourceColumn * scale + targetX;
-                    for (let columnOffset = 0; columnOffset < scale; columnOffset++)
-                        targetPixels[targetIndex + columnOffset] = sourcePixelValue;
-                }
-            }
-        }
-    },
-
-    // I think there is a more efficient way to scale and clip the source to the target.
-    // Rather than calculating the source row and column for every write to the target, it might be more efficient to iterate
-    // through source row and column with for loops. The only issue is that calculating edge offsets will require some tricky math
-    // and some conditions. For example, if the source is being scaled up by 2 and targetX is -1, only half of the source pixel will be
-    // drawn. Special offset values would need to be calculated for reading the source values for any clipped edges.
-    // One benefit of this approach is there is no branching. Function calls should ideally be inlined.
-    copyPixelsScaledClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY, scale) {
-        let firstTargetColumn = BitMath.clampZero(targetX);
-        let firstTargetRow = BitMath.clampZero(targetY);
-        let lastTargetColumn = BitMath.clampHigh(targetX + sourceWidth * scale, targetWidth);
-        let lastTargetRow = BitMath.clampHigh(targetY + sourceHeight * scale, targetHeight);
-
-        const inverseScale = 1 / scale; // Multiply by inverse scale instead of dividing by scale in the loop.
-
-        for (let targetRow = firstTargetRow; targetRow < lastTargetRow; targetRow++) {
-            const firstIndexInSourceRow = BitMath.truncate((targetRow - targetY) * inverseScale) * sourceWidth; // Using truncate instead of floor because value is always positive.
-            const firstIndexInTargetRow = targetRow * targetWidth;
-            // There might be 
-            for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++)
-                targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[firstIndexInSourceRow + BitMath.truncate((targetColumn - targetX) * inverseScale)];
-        }
-    },
-
-    // A raster is simply a 2 dimensional grid of pixels.
-    // This object is helpful for tracking the pixel values, the number of pixels, and the width and height of the grid.
-    // pixels is an array of 32 bit ints, pixelCount is the number of array elements.
-    // width and height must not exceed the length of the pixels array to avoid overflows.
-    createRaster(pixels, width, height) {
-        return { pixels, pixelCount: width * height, width, height }
-    },
-
-
-
-    fill(raster_pixels, raster_pixelCount, color) {
-        for (let index = 0; index < raster_pixelCount; index++) raster_pixels[index] = color;
-    },
-
-    ///////////////
-    // TRIANGLES //
-    ///////////////
-    // Functions for drawing triangles
-
-    fillClippedTriangle(raster_pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
-        // The bounding box of the triangle
-        const box_bottom = PureMath.ceiling(PureMath.minimum2(PureMath.maximum3(triangle_y0, triangle_y1, triangle_y2), clip_bottom));
-        const box_left = PureMath.floor(PureMath.maximum2(PureMath.minimum3(triangle_x0, triangle_x1, triangle_x2), clip_left));
-        const box_right = PureMath.ceiling(PureMath.minimum2(PureMath.maximum3(triangle_x0, triangle_x1, triangle_x2), clip_right));
-        const box_top = PureMath.floor(PureMath.maximum2(PureMath.minimum3(triangle_y0, triangle_y1, triangle_y2), clip_top));
-        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
-
-        // edge0
-        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
-        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
-        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
-        // edge1
-        const a1 = triangle_y1 - triangle_y2;
-        const b1 = triangle_x2 - triangle_x1;
-        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
-        // edge2
-        const a2 = triangle_y2 - triangle_y0;
-        const b2 = triangle_x0 - triangle_x2;
-        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
-
-        // Get the x and y offsets for each pixel test
-        // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
-        const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
-        const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
-        const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
-        const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
-        const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
-        const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
-
-        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
-        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
-        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
-        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
-
-        // The y increment to add to the edge test result on each y iteration
-        const yOffset0 = b0 - a0 * box_width;
-        const yOffset1 = b1 - a1 * box_width;
-        const yOffset2 = b2 - a2 * box_width;
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_width;
-
-        for (let y = box_top; y < box_bottom; y++) {
-
-            for (let x = box_left; x < box_right; x++) {
-                // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
-                // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
-                if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = color;
-
-                index++;
-
-                v0 += a0;
-                v1 += a1;
-                v2 += a2;
-            }
-
-            index += indexYStep;
-
-            v0 += yOffset0;
-            v1 += yOffset1;
-            v2 += yOffset2;
-        }
-    },
-
-    fillTransparentTriangle(raster_pixels, raster_width, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
-        // The bounding box of the triangle
-        const box_bottom = BitMath.ceiling(PureMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_left = BitMath.floor(PureMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_right = BitMath.ceiling(PureMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_top = BitMath.floor(PureMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
-
-        // edge0
-        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
-        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
-        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
-        // edge1
-        const a1 = triangle_y1 - triangle_y2;
-        const b1 = triangle_x2 - triangle_x1;
-        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
-        // edge2
-        const a2 = triangle_y2 - triangle_y0;
-        const b2 = triangle_x0 - triangle_x2;
-        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
-
-        const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
-        const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
-        const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
-        const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
-        const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
-        const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
-
-        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
-        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
-        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
-        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
-
-        // The y increment to add to the edge test result on each y iteration
-        const yOffset0 = b0 - a0 * box_width;
-        const yOffset1 = b1 - a1 * box_width;
-        const yOffset2 = b2 - a2 * box_width;
-
-        // Premultiplied color:
-        color = Color.premultiplyColor(color);
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_width;
-
-        for (let y = box_top; y < box_bottom; y++) {
-
-            for (let x = box_left; x < box_right; x++) {
-                if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = Color.blendOverOpaqueBase(color, raster_pixels[index]);
-
-                /*if (x === TESTDATA.x && y === TESTDATA.y) {
-
-                    MESSAGE += `\n--- triangle --- ${(color >>> 0).toString(16)} --- test point: x: ${x}, y: ${y}\n`;
-                    MESSAGE += `- boundary:\n${box_left}, ${box_top}\n${box_right}, ${box_bottom}\n`
-                    MESSAGE += `- triangle points (x, y):\n${triangle_x0}, ${triangle_y0}\n${triangle_x1}, ${triangle_y1}\n${triangle_x2}, ${triangle_y2}\n`;
-                    MESSAGE += `- edge normals (x, y):\n${a0}, ${b0}\n${a1}, ${b1}\n${a2}, ${b2}\n`;
-                    MESSAGE += `- edge tests:\n${x + x0}, ${y + y0} : ${v0}\n${x + x1}, ${y + y1} : ${v1}\n${x + x2}, ${y + y2} : ${v2}, point inside: ${v0 > 0 && v1 > 0 && v2 > 0}\n`;
-
-                    //MESSAGE +=(edge0IsShared && (b0 < 0 || b0 == 0 && a0 > 0) ? v0 >= 0 : v0 > 0) , (edge1IsShared && (b1 < 0 || b1 == 0 && a1 > 0) ? v1 >= 0 : v1 > 0) , (edge2IsShared && b2 < 0 ? (v2 >= 0 || b2 == 0 && a2 > 0) : v2 > 0);
-                    //console.log(triangle_x2 + ' -> ' + triangle_x0, triangle_y2 + ' -> ' + triangle_y0, a2, b2, x + x2, y + y2, v1);
-                }*/
-
-                index++;
-
-                v0 += a0;
-                v1 += a1;
-                v2 += a2;
-            }
-
-            index += indexYStep;
-
-            v0 += yOffset0;
-            v1 += yOffset1;
-            v2 += yOffset2;
-        }
-    },
-
-    // edge0IsShared, edge1IsShared, and edge2IsShared take 0 or 1. 1 indicates a shared edge.
-    // triangle points are expected to be in clockwise winding order.
-    fillTransparentMeshTriangle(raster_pixels, raster_width, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, edge0IsShared, edge1IsShared, edge2IsShared, color) {
-        // The bounding box of the triangle
-        const box_bottom = BitMath.ceiling(PureMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_left = BitMath.floor(PureMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_right = BitMath.ceiling(PureMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_top = BitMath.floor(PureMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
-
-        // a and b represent the x and y values of the right normal vector to the edge.
-        // edge0
-        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
-        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
-        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
-        // edge1
-        const a1 = triangle_y1 - triangle_y2;
-        const b1 = triangle_x2 - triangle_x1;
-        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
-        // edge2
-        const a2 = triangle_y2 - triangle_y0;
-        const b2 = triangle_x0 - triangle_x2;
-        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
-
-        const x0 = edge0IsShared ? 0.5 : a0 < 0 ? 0 : 1;
-        const y0 = edge0IsShared ? 0.5 : b0 < 0 ? 0 : 1;
-        const x1 = edge1IsShared ? 0.5 : a1 < 0 ? 0 : 1;
-        const y1 = edge1IsShared ? 0.5 : b1 < 0 ? 0 : 1;
-        const x2 = edge2IsShared ? 0.5 : a2 < 0 ? 0 : 1;
-        const y2 = edge2IsShared ? 0.5 : b2 < 0 ? 0 : 1;
-
-        //console.log(`edge1 normal: ${a1}, ${b1}, offset: ${x1}, ${y1}`)
-
-        // These are the results of each edge test for the offset point in the pixel boundary.
-        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
-        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
-        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
-
-        // The y increment to add to the edge test result on each y iteration
-        const yOffset0 = b0 - a0 * box_width;
-        const yOffset1 = b1 - a1 * box_width;
-        const yOffset2 = b2 - a2 * box_width;
-
-        const premultipliedColor = Color.premultiplyColor(color);
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_width;
-
-        const edge0IsBottomLeft = edge0IsShared && (b0 < 0 || b0 == 0 && a0 > 0);
-        const edge1IsBottomLeft = edge1IsShared && (b1 < 0 || b1 == 0 && a1 > 0);
-        const edge2IsBottomLeft = edge2IsShared && (b2 < 0 || b2 == 0 && a1 > 0);
-
-        for (let y = box_top; y < box_bottom; y++) {
-            for (let x = box_left; x < box_right; x++) {
-                // Apply a tie break rule to include points that are on the line for shared edges
-                //if ((edge0IsBottomLeft ? v0 >= 0 : v0 > 0) && (edge1IsBottomLeft ? v1 >= 0 : v1 > 0) && (edge2IsBottomLeft ? v2 >= 0 : v2 > 0)) raster_pixels[index] = Color.blendOverOpaqueBase(premultipliedColor, pixels[index]);
-                //if ((v0 > 0 || edge0IsBottomLeft && v0 === 0) && (v1 > 0 || edge1IsBottomLeft && v1 === 0) && (v2 > 0 || edge2IsBottomLeft && v2 === 0)) raster_pixels[index] = Color.blendOverOpaqueBase(premultipliedColor, pixels[index]);
-                if (((v0 > 0) + ((v0 === 0) & edge0IsBottomLeft)) && ((v1 > 0) + ((v1 === 0) & edge1IsBottomLeft)) && ((v2 > 0) + ((v2 === 0) & edge2IsBottomLeft))) raster_pixels[index] = Color.blendOverOpaqueBase(premultipliedColor, raster_pixels[index]);
-
-                /*if (x === TESTDATA.x && y === TESTDATA.y) {
-
-                    MESSAGE += `\n--- triangle --- ${(color >>> 0).toString(16)} --- test point: x: ${x}, y: ${y}\n`;
-                    MESSAGE += `- boundary:\n${box_left}, ${box_top}\n${box_right}, ${box_bottom}\n`
-                    MESSAGE += `- triangle points (x, y):\n${triangle_x0}, ${triangle_y0}\n${triangle_x1}, ${triangle_y1}\n${triangle_x2}, ${triangle_y2}\n`;
-                    MESSAGE += `- edge normals (x, y):\n${a0}, ${b0}\n${a1}, ${b1}\n${a2}, ${b2}\n`;
-                    MESSAGE += `- edge tests:\n${x + x0}, ${y + y0} : ${v0}\n${x + x1}, ${y + y1} : ${v1}\n${x + x2}, ${y + y2} : ${v2}, point inside: ${v0 > 0 && v1 > 0 && v2 > 0}\n`;
-
-                    //MESSAGE +=(edge0IsShared && (b0 < 0 || b0 == 0 && a0 > 0) ? v0 >= 0 : v0 > 0) , (edge1IsShared && (b1 < 0 || b1 == 0 && a1 > 0) ? v1 >= 0 : v1 > 0) , (edge2IsShared && b2 < 0 ? (v2 >= 0 || b2 == 0 && a2 > 0) : v2 > 0);
-                    //console.log(triangle_x2 + ' -> ' + triangle_x0, triangle_y2 + ' -> ' + triangle_y0, a2, b2, x + x2, y + y2, v1);
-                }*/
-                index++;
-
-                v0 += a0;
-                v1 += a1;
-                v2 += a2;
-            }
-
-            index += indexYStep;
-
-            v0 += yOffset0;
-            v1 += yOffset1;
-            v2 += yOffset2;
-        }
-    },
-
-    // This method assumes clockwise point winding.
-    // Any pixel volumes that are to the right of or overlap all 3 edge vectors will be drawn.
-    // Points will be offset to the corner of the pixel that is farthest along the edge normal to get the point in the pixel volume that is deepest into the edge along the normal.
-    fillTriangle(raster_pixels, raster_width, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
-        // The bounding box of the triangle
-        const box_bottom = BitMath.ceiling(BitMath.maximum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_left = BitMath.floor(BitMath.minimum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_right = BitMath.ceiling(BitMath.maximum3(triangle_x0, triangle_x1, triangle_x2));
-        const box_top = BitMath.floor(BitMath.minimum3(triangle_y0, triangle_y1, triangle_y2));
-        const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
-
-        // The equation of a line is ax + by + c = 0
-        // a and b are the x and y values of the normal of the line.
-        // c is the negative dot product of the point (x, y) and the normal (a, b).
-        // When the point (x, y) is on the line, the equation will yield 0.
-        // When the point (x, y) is to the right or left of the line, the equation will yield a positive or negative value.
-
-        // Set up the coefficient values for each line segment in the triangle.
-        // The right normal of a vector, v (p1.x - p0.x, p1.y - p0.y) is (-vy, vx)
-        // edge0
-        const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
-        const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
-        const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
-        // edge1
-        const a1 = triangle_y1 - triangle_y2;
-        const b1 = triangle_x2 - triangle_x1;
-        const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
-        // edge2
-        const a2 = triangle_y2 - triangle_y0;
-        const b2 = triangle_x0 - triangle_x2;
-        const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
-
-        // This algorithm fills any pixel that the triangle overlaps.
-        // A pixel is technically an area, not a point. Points are infinitely small. Pixels have an area of 1x1 or 1.
-        // A pixel has 4 corner points.
-        // Instead of testing the top left corner or the center point, this algorithm tests the point that is farthest along the normal vector.
-        // The normal vector points inside the triangle. Getting the point that is deepest into the triangle will ensure the overlap test is accurate.
-
-        // Get the x and y offsets for each pixel test
-        // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
-        const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
-        const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
-        const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
-        const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
-        const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
-        const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
-
-        // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
-        let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
-        let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
-        let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
-
-        // The y increment to add to the edge test result on each y iteration
-        const yOffset0 = b0 - a0 * box_width;
-        const yOffset1 = b1 - a1 * box_width;
-        const yOffset2 = b2 - a2 * box_width;
-
-        // Set up the first index and row step.
-        let index = box_top * raster_width + box_left;
-        const indexYStep = raster_width - box_width;
-
-        for (let y = box_top; y < box_bottom; y++) {
-
-            for (let x = box_left; x < box_right; x++) {
-                // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
-                // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
-                if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = color;
-
-                index++;
-
-                // Mutating the floating point test results like this will produce rounding errors and possibly distort long edges.
-                v0 += a0;
-                v1 += a1;
-                v2 += a2;
-            }
-
-            index += indexYStep;
-
-            v0 += yOffset0;
-            v1 += yOffset1;
-            v2 += yOffset2;
+            if (t2 < t0) return; // time should not be less than low constraint of t0
+            if (t2 < t1) t1 = t2; // time should be less than high constraint of t1
         }
     }
 
-};
+    const x0 = lineSegmentX0;
+    const y0 = lineSegmentY0;
+
+    // Set new values. They may be the same or they may be updated by clipping.
+    lineSegmentX0 = BitMath_floor(x0 + deltaX * t0);
+    lineSegmentY0 = BitMath_floor(y0 + deltaY * t0);
+    lineSegmentX1 = BitMath_floor(x0 + deltaX * t1);
+    lineSegmentY1 = BitMath_floor(y0 + deltaY * t1);
+
+    const absoluteRise = BitMath_absolute(lineSegmentY1 - lineSegmentY0); // Must recompute rise with new values
+    const absoluteRun = BitMath_absolute(lineSegmentX1 - lineSegmentX0); // Must recompute run with new values
+    const stepX = deltaX > 0 ? 1 : -1;
+    const stepY = deltaY > 0 ? 1 : -1;
+
+    let index = lineSegmentY0 * raster_width + lineSegmentX0;
+    const lastIndex = lineSegmentY1 * raster_width + lineSegmentX1;
+    const indexYStep = stepY * raster_width;
+
+    // If the line is steep, then y will always be incremented, however x will not always be incremented.
+    // Else if the line is not steep, then x will always be incremented, but y will not always be incremented.
+    if (absoluteRise > absoluteRun) {
+        let error = absoluteRise >> 1;
+        while (index !== lastIndex) {
+            raster_pixels[index] = color;
+            index += indexYStep;
+            error -= absoluteRun;
+            if (error < 0) {
+                index += stepX;
+                error += absoluteRise;
+            }
+        }
+    } else {
+        let error = absoluteRun >> 1;
+        while (index !== lastIndex) {
+            raster_pixels[index] = color;
+            index += stepX;
+            error -= absoluteRise;
+            if (error < 0) {
+                index += indexYStep;
+                error += absoluteRun;
+            }
+        }
+    }
+    raster_pixels[index] = color; // Draw the last pixel in the line segment.
+}
+
+////////////
+// PIXELS // Functions for drawing individual pixels
+////////////
+
+// pixel_x and pixel_y must be integers, not floats.
+function Raster_fillPixel(raster_pixels, raster_width, pixel_x, pixel_y, color) {
+    raster_pixels[pixel_y * raster_width + pixel_x] = color;
+}
+
+// * pixelCoordinates is a flat array of pixel coordinates in the form x0, y0, x1, y1, x2, y2...
+// * colors is a flat array of 32 bit int color values.
+function Raster_fillPixels(raster_pixels, raster_width, pixelCoordinates, colors, coordinateCount) {
+    let colorIndex = 0;
+    for (let xIndex = 0; xIndex < coordinateCount; xIndex += 2) {
+        let yIndex = xIndex + 1;
+        raster_pixels[pixelCoordinates[yIndex] * raster_width + pixelCoordinates[xIndex]] = colors[colorIndex];
+        colorIndex++;
+    }
+}
+
+// Colors are in aabbggrr format
+function Raster_fillTransparentPixel(raster_pixels, raster_width, pixel_x, pixel_y, color) {
+    const index = pixel_y * raster_width + pixel_x;
+
+    const baseColor = raster_pixels[index];
+
+    const alpha = color >>> 24;
+    const inverseAlpha = 255 - alpha;
+
+    const br = ((baseColor & 0x00ff00ff) * alpha + (color & 0x00ff00ff) * inverseAlpha) >>> 8;
+    const ag = (((baseColor >>> 8) & 0x00ff00ff) * alpha + ((color >>> 8) & 0x00ff00ff) * inverseAlpha) >>> 8;
+
+    raster_pixels[index] = (ag << 8 & 0xff00ff00) | (br & 0x00ff00ff);
+}
+
+// Only fills the pixel if it is inside the clip boundaries.
+// These boundaries should never surpass the raster width and height.
+// pixel_x and pixel_y must be an integer, not a float.
+function Raster_fillClippedPixel(raster_pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, pixel_x, pixel_y, color) {
+    if (pixel_x < clip_left || pixel_y < clip_top || pixel_x > clip_right || pixel_y > clip_bottom) return;
+    raster_pixels[pixel_y * raster_width + pixel_x] = color;
+}
+
+////////////
+// RASTER //
+////////////
+// Functions for working with rasters, which are essentially arrays of color values that have a width and height
+
+// I messed with this function without testing it. Not sure if it still works.
+function Raster_copyOpaquePixels(sourceRaster_pixels, sourceRaster_width, sourceRaster_height, targetRaster_pixels, targetRaster_width, target_x, target_y) {
+    const bottom = target_y + sourceRaster_height;
+    const right = target_x + sourceRaster_width;
+
+    let sourceIndex = 0;
+    for (let y = target_y; y < bottom; y++) {
+        let firstIndexInTargetRow = y * targetRaster_width; // can be optimized further.
+        for (let x = target_x; x < right; x++) {
+            const sourceValue = sourceRaster_pixels[sourceIndex];
+            const mask = -((sourceValue >>> 24) & 0xff !== 0);
+            const targetIndex = firstIndexInTargetRow + x;
+            targetRaster_pixels[targetIndex] = (sourceValue & mask) | (targetRaster_pixels[targetIndex] & ~mask);
+            sourceIndex++;
+        }
+    }
+}
+
+function Raster_copyOpaquePixelsClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY) {
+    const left = BitMath_clampZero(targetX);
+    const right = BitMath_clampHigh(targetX + sourceWidth, targetWidth);
+    if (left > right) return;
+
+    const top = BitMath_clampZero(targetY);
+    const bottom = BitMath_clampHigh(targetY + sourceHeight, targetHeight);
+    if (top > bottom) return;
+
+    for (let pixelY = top; pixelY < bottom; pixelY++) {
+        const sourcePixelY = pixelY - targetY;
+        for (let pixelX = left; pixelX < right; pixelX++) {
+            const sourceValue = sourcePixels[sourcePixelY * sourceWidth + (pixelX - targetX)];
+            const mask = -((sourceValue >>> 24) & 0xff !== 0);
+            const targetIndex = pixelY * targetWidth + pixelX;
+            targetPixels[targetIndex] = (sourceValue & mask) | (targetPixels[targetIndex] & ~mask);
+        }
+    }
+}
+
+// This method could write outside of the target buffer, so only use it if you know for sure that the source is within the target bounds.
+// Copies all pixels from the source into the target starting at the specified position in the target.
+function Raster_copyPixels(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY) {
+    const lastTargetRow = targetY + sourceHeight;
+    const lastTargetColumn = targetX + sourceWidth;
+
+    let sourceIndex = 0; // This method always copies the entire sourcePixels array in contiguous order, so we don't need to loop 
+    for (let targetRow = targetY; targetRow < lastTargetRow; targetRow++) {
+        const firstIndexInTargetRow = targetRow * targetWidth; // The first index in the target row.
+        for (let targetColumn = targetX; targetColumn < lastTargetColumn; targetColumn++) {
+            targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[sourceIndex];
+            sourceIndex++;
+        }
+    }
+}
+
+function Raster_copyPixelsClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY) {
+    const firstTargetColumn = BitMath_clampZero(targetX);
+    const lastTargetColumn = BitMath_clampHigh(targetX + sourceWidth, targetWidth);
+    if (firstTargetColumn > lastTargetColumn) return;
+
+    const firstTargetRow = BitMath_clampZero(targetY);
+    const lastTargetRow = BitMath_clampHigh(targetY + sourceHeight, targetHeight);
+    if (firstTargetRow > lastTargetRow) return;
+
+    for (let targetRow = firstTargetRow; targetRow < lastTargetRow; targetRow++) {
+        const firstIndexInTargetRow = targetRow * targetWidth;
+        const sourceRow = targetRow - targetY;
+        for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++)
+            targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[sourceRow * sourceWidth + targetColumn - targetX];
+    }
+}
+
+// The idea is to duplicate each pixel in the sourcePixels array by a factor of scale in 2 dimensions.
+// So if scale = 2, 1 pixel will turn into 4 pixels, filling 2 columns on the x axis and 2 rows on the y axis.
+//
+// Example: scale = 2
+// 
+// [0, 1
+//  2, 3] source array
+//
+// [0, 0, 1, 1,
+//  0, 0, 1, 1,
+//  2, 2, 3, 3,
+//  2, 2, 3, 3] target array
+//
+// To do this, loop over each row *scale* number of times and copy each pixel in the row *scale* number of times to the target array.
+function Raster_copyPixelsScaled(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetX, targetY, scale) {
+    for (let sourceRow = 0; sourceRow < sourceHeight; sourceRow++) {
+        const firstIndexInSourceRow = sourceRow * sourceWidth;
+        const targetRow = sourceRow * scale + targetY;
+        for (let rowOffset = 0; rowOffset < scale; rowOffset++) {
+            const firstIndexInTargetRow = (targetRow + rowOffset) * targetWidth;
+            for (let sourceColumn = 0; sourceColumn < sourceWidth; sourceColumn++) {
+                const sourcePixelValue = sourcePixels[firstIndexInSourceRow + sourceColumn];
+                const targetIndex = firstIndexInTargetRow + sourceColumn * scale + targetX;
+                for (let columnOffset = 0; columnOffset < scale; columnOffset++)
+                    targetPixels[targetIndex + columnOffset] = sourcePixelValue;
+            }
+        }
+    }
+}
+
+// I think there is a more efficient way to scale and clip the source to the target.
+// Rather than calculating the source row and column for every write to the target, it might be more efficient to iterate
+// through source row and column with for loops. The only issue is that calculating edge offsets will require some tricky math
+// and some conditions. For example, if the source is being scaled up by 2 and targetX is -1, only half of the source pixel will be
+// drawn. Special offset values would need to be calculated for reading the source values for any clipped edges.
+// One benefit of this approach is there is no branching. Function calls should ideally be inlined.
+function Raster_copyPixelsScaledClipped(sourcePixels, sourceWidth, sourceHeight, targetPixels, targetWidth, targetHeight, targetX, targetY, scale) {
+    let firstTargetColumn = BitMath_clampZero(targetX);
+    let firstTargetRow = BitMath_clampZero(targetY);
+    let lastTargetColumn = BitMath_clampHigh(targetX + sourceWidth * scale, targetWidth);
+    let lastTargetRow = BitMath_clampHigh(targetY + sourceHeight * scale, targetHeight);
+
+    const inverseScale = 1 / scale; // Multiply by inverse scale instead of dividing by scale in the loop.
+
+    for (let targetRow = firstTargetRow; targetRow < lastTargetRow; targetRow++) {
+        const firstIndexInSourceRow = BitMath_truncate((targetRow - targetY) * inverseScale) * sourceWidth; // Using truncate instead of floor because value is always positive.
+        const firstIndexInTargetRow = targetRow * targetWidth;
+        // There might be 
+        for (let targetColumn = firstTargetColumn; targetColumn < lastTargetColumn; targetColumn++)
+            targetPixels[firstIndexInTargetRow + targetColumn] = sourcePixels[firstIndexInSourceRow + BitMath_truncate((targetColumn - targetX) * inverseScale)];
+    }
+}
+
+// A raster is simply a 2 dimensional grid of pixels.
+// This object is helpful for tracking the pixel values, the number of pixels, and the width and height of the grid.
+// pixels is an array of 32 bit ints, pixelCount is the number of array elements.
+// width and height must not exceed the length of the pixels array to avoid overflows.
+function Raster_createRaster(pixels, width, height) {
+    return { pixels, pixelCount: width * height, width, height }
+}
+
+
+
+function Raster_fill(raster_pixels, raster_pixelCount, color) {
+    for (let index = 0; index < raster_pixelCount; index++) raster_pixels[index] = color;
+}
+
+///////////////
+// TRIANGLES //
+///////////////
+// Functions for drawing triangles
+
+function Raster_fillClippedTriangle(raster_pixels, raster_width, clip_left, clip_top, clip_right, clip_bottom, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
+    // The bounding box of the triangle
+    const box_bottom = PureMath_ceiling(PureMath_minimum2(PureMath_maximum3(triangle_y0, triangle_y1, triangle_y2), clip_bottom));
+    const box_left = PureMath_floor(PureMath_maximum2(PureMath_minimum3(triangle_x0, triangle_x1, triangle_x2), clip_left));
+    const box_right = PureMath_ceiling(PureMath_minimum2(PureMath_maximum3(triangle_x0, triangle_x1, triangle_x2), clip_right));
+    const box_top = PureMath_floor(PureMath_maximum2(PureMath_minimum3(triangle_y0, triangle_y1, triangle_y2), clip_top));
+    const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+    // edge0
+    const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+    const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+    const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+    // edge1
+    const a1 = triangle_y1 - triangle_y2;
+    const b1 = triangle_x2 - triangle_x1;
+    const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+    // edge2
+    const a2 = triangle_y2 - triangle_y0;
+    const b2 = triangle_x0 - triangle_x2;
+    const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+    // Get the x and y offsets for each pixel test
+    // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
+    const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
+    const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
+    const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
+    const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
+    const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
+    const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
+
+    // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
+    let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+    let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+    let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+
+    // The y increment to add to the edge test result on each y iteration
+    const yOffset0 = b0 - a0 * box_width;
+    const yOffset1 = b1 - a1 * box_width;
+    const yOffset2 = b2 - a2 * box_width;
+
+    // Set up the first index and row step.
+    let index = box_top * raster_width + box_left;
+    const indexYStep = raster_width - box_width;
+
+    for (let y = box_top; y < box_bottom; y++) {
+
+        for (let x = box_left; x < box_right; x++) {
+            // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
+            // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
+            if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = color;
+
+            index++;
+
+            v0 += a0;
+            v1 += a1;
+            v2 += a2;
+        }
+
+        index += indexYStep;
+
+        v0 += yOffset0;
+        v1 += yOffset1;
+        v2 += yOffset2;
+    }
+}
+
+function Raster_fillTransparentTriangle(raster_pixels, raster_width, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
+    // The bounding box of the triangle
+    const box_bottom = BitMath_ceiling(PureMath_maximum3(triangle_y0, triangle_y1, triangle_y2));
+    const box_left = BitMath_floor(PureMath_minimum3(triangle_x0, triangle_x1, triangle_x2));
+    const box_right = BitMath_ceiling(PureMath_maximum3(triangle_x0, triangle_x1, triangle_x2));
+    const box_top = BitMath_floor(PureMath_minimum3(triangle_y0, triangle_y1, triangle_y2));
+    const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+    // edge0
+    const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+    const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+    const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+    // edge1
+    const a1 = triangle_y1 - triangle_y2;
+    const b1 = triangle_x2 - triangle_x1;
+    const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+    // edge2
+    const a2 = triangle_y2 - triangle_y0;
+    const b2 = triangle_x0 - triangle_x2;
+    const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+    const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
+    const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
+    const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
+    const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
+    const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
+    const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
+
+    // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
+    let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+    let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+    let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+
+    // The y increment to add to the edge test result on each y iteration
+    const yOffset0 = b0 - a0 * box_width;
+    const yOffset1 = b1 - a1 * box_width;
+    const yOffset2 = b2 - a2 * box_width;
+
+    // Premultiplied color:
+    color = Color_premultiplyColor(color);
+
+    // Set up the first index and row step.
+    let index = box_top * raster_width + box_left;
+    const indexYStep = raster_width - box_width;
+
+    for (let y = box_top; y < box_bottom; y++) {
+
+        for (let x = box_left; x < box_right; x++) {
+            if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = Color_blendOverOpaqueBase(color, raster_pixels[index]);
+
+            /*if (x === TESTDATA.x && y === TESTDATA.y) {
+
+                MESSAGE += `\n--- triangle --- ${(color >>> 0).toString(16)} --- test point: x: ${x}, y: ${y}\n`;
+                MESSAGE += `- boundary:\n${box_left}, ${box_top}\n${box_right}, ${box_bottom}\n`
+                MESSAGE += `- triangle points (x, y):\n${triangle_x0}, ${triangle_y0}\n${triangle_x1}, ${triangle_y1}\n${triangle_x2}, ${triangle_y2}\n`;
+                MESSAGE += `- edge normals (x, y):\n${a0}, ${b0}\n${a1}, ${b1}\n${a2}, ${b2}\n`;
+                MESSAGE += `- edge tests:\n${x + x0}, ${y + y0} : ${v0}\n${x + x1}, ${y + y1} : ${v1}\n${x + x2}, ${y + y2} : ${v2}, point inside: ${v0 > 0 && v1 > 0 && v2 > 0}\n`;
+
+                //MESSAGE +=(edge0IsShared && (b0 < 0 || b0 == 0 && a0 > 0) ? v0 >= 0 : v0 > 0) , (edge1IsShared && (b1 < 0 || b1 == 0 && a1 > 0) ? v1 >= 0 : v1 > 0) , (edge2IsShared && b2 < 0 ? (v2 >= 0 || b2 == 0 && a2 > 0) : v2 > 0);
+                //console.log(triangle_x2 + ' -> ' + triangle_x0, triangle_y2 + ' -> ' + triangle_y0, a2, b2, x + x2, y + y2, v1);
+            }*/
+
+            index++;
+
+            v0 += a0;
+            v1 += a1;
+            v2 += a2;
+        }
+
+        index += indexYStep;
+
+        v0 += yOffset0;
+        v1 += yOffset1;
+        v2 += yOffset2;
+    }
+}
+
+// edge0IsShared, edge1IsShared, and edge2IsShared take 0 or 1. 1 indicates a shared edge.
+// triangle points are expected to be in clockwise winding order.
+function Raster_fillTransparentMeshTriangle(raster_pixels, raster_width, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, edge0IsShared, edge1IsShared, edge2IsShared, color) {
+    // The bounding box of the triangle
+    const box_bottom = BitMath_ceiling(PureMath_maximum3(triangle_y0, triangle_y1, triangle_y2));
+    const box_left = BitMath_floor(PureMath_minimum3(triangle_x0, triangle_x1, triangle_x2));
+    const box_right = BitMath_ceiling(PureMath_maximum3(triangle_x0, triangle_x1, triangle_x2));
+    const box_top = BitMath_floor(PureMath_minimum3(triangle_y0, triangle_y1, triangle_y2));
+    const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+    // a and b represent the x and y values of the right normal vector to the edge.
+    // edge0
+    const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+    const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+    const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+    // edge1
+    const a1 = triangle_y1 - triangle_y2;
+    const b1 = triangle_x2 - triangle_x1;
+    const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+    // edge2
+    const a2 = triangle_y2 - triangle_y0;
+    const b2 = triangle_x0 - triangle_x2;
+    const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+    const x0 = edge0IsShared ? 0.5 : a0 < 0 ? 0 : 1;
+    const y0 = edge0IsShared ? 0.5 : b0 < 0 ? 0 : 1;
+    const x1 = edge1IsShared ? 0.5 : a1 < 0 ? 0 : 1;
+    const y1 = edge1IsShared ? 0.5 : b1 < 0 ? 0 : 1;
+    const x2 = edge2IsShared ? 0.5 : a2 < 0 ? 0 : 1;
+    const y2 = edge2IsShared ? 0.5 : b2 < 0 ? 0 : 1;
+
+    //console.log(`edge1 normal: ${a1}, ${b1}, offset: ${x1}, ${y1}`)
+
+    // These are the results of each edge test for the offset point in the pixel boundary.
+    let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+    let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+    let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+
+    // The y increment to add to the edge test result on each y iteration
+    const yOffset0 = b0 - a0 * box_width;
+    const yOffset1 = b1 - a1 * box_width;
+    const yOffset2 = b2 - a2 * box_width;
+
+    const premultipliedColor = Color_premultiplyColor(color);
+
+    // Set up the first index and row step.
+    let index = box_top * raster_width + box_left;
+    const indexYStep = raster_width - box_width;
+
+    const edge0IsBottomLeft = edge0IsShared && (b0 < 0 || b0 == 0 && a0 > 0);
+    const edge1IsBottomLeft = edge1IsShared && (b1 < 0 || b1 == 0 && a1 > 0);
+    const edge2IsBottomLeft = edge2IsShared && (b2 < 0 || b2 == 0 && a1 > 0);
+
+    for (let y = box_top; y < box_bottom; y++) {
+        for (let x = box_left; x < box_right; x++) {
+            // Apply a tie break rule to include points that are on the line for shared edges
+            //if ((edge0IsBottomLeft ? v0 >= 0 : v0 > 0) && (edge1IsBottomLeft ? v1 >= 0 : v1 > 0) && (edge2IsBottomLeft ? v2 >= 0 : v2 > 0)) raster_pixels[index] = Color_blendOverOpaqueBase(premultipliedColor, pixels[index]);
+            //if ((v0 > 0 || edge0IsBottomLeft && v0 === 0) && (v1 > 0 || edge1IsBottomLeft && v1 === 0) && (v2 > 0 || edge2IsBottomLeft && v2 === 0)) raster_pixels[index] = Color_blendOverOpaqueBase(premultipliedColor, pixels[index]);
+            if (((v0 > 0) + ((v0 === 0) & edge0IsBottomLeft)) && ((v1 > 0) + ((v1 === 0) & edge1IsBottomLeft)) && ((v2 > 0) + ((v2 === 0) & edge2IsBottomLeft))) raster_pixels[index] = Color_blendOverOpaqueBase(premultipliedColor, raster_pixels[index]);
+
+            /*if (x === TESTDATA.x && y === TESTDATA.y) {
+
+                MESSAGE += `\n--- triangle --- ${(color >>> 0).toString(16)} --- test point: x: ${x}, y: ${y}\n`;
+                MESSAGE += `- boundary:\n${box_left}, ${box_top}\n${box_right}, ${box_bottom}\n`
+                MESSAGE += `- triangle points (x, y):\n${triangle_x0}, ${triangle_y0}\n${triangle_x1}, ${triangle_y1}\n${triangle_x2}, ${triangle_y2}\n`;
+                MESSAGE += `- edge normals (x, y):\n${a0}, ${b0}\n${a1}, ${b1}\n${a2}, ${b2}\n`;
+                MESSAGE += `- edge tests:\n${x + x0}, ${y + y0} : ${v0}\n${x + x1}, ${y + y1} : ${v1}\n${x + x2}, ${y + y2} : ${v2}, point inside: ${v0 > 0 && v1 > 0 && v2 > 0}\n`;
+
+                //MESSAGE +=(edge0IsShared && (b0 < 0 || b0 == 0 && a0 > 0) ? v0 >= 0 : v0 > 0) , (edge1IsShared && (b1 < 0 || b1 == 0 && a1 > 0) ? v1 >= 0 : v1 > 0) , (edge2IsShared && b2 < 0 ? (v2 >= 0 || b2 == 0 && a2 > 0) : v2 > 0);
+                //console.log(triangle_x2 + ' -> ' + triangle_x0, triangle_y2 + ' -> ' + triangle_y0, a2, b2, x + x2, y + y2, v1);
+            }*/
+            index++;
+
+            v0 += a0;
+            v1 += a1;
+            v2 += a2;
+        }
+
+        index += indexYStep;
+
+        v0 += yOffset0;
+        v1 += yOffset1;
+        v2 += yOffset2;
+    }
+}
+
+// This method assumes clockwise point winding.
+// Any pixel volumes that are to the right of or overlap all 3 edge vectors will be drawn.
+// Points will be offset to the corner of the pixel that is farthest along the edge normal to get the point in the pixel volume that is deepest into the edge along the normal.
+function Raster_fillTriangle(raster_pixels, raster_width, triangle_x0, triangle_y0, triangle_x1, triangle_y1, triangle_x2, triangle_y2, color) {
+    // The bounding box of the triangle
+    const box_bottom = BitMath_ceiling(BitMath_maximum3(triangle_y0, triangle_y1, triangle_y2));
+    const box_left = BitMath_floor(BitMath_minimum3(triangle_x0, triangle_x1, triangle_x2));
+    const box_right = BitMath_ceiling(BitMath_maximum3(triangle_x0, triangle_x1, triangle_x2));
+    const box_top = BitMath_floor(BitMath_minimum3(triangle_y0, triangle_y1, triangle_y2));
+    const box_width = box_right - box_left; // The box width is tied to the x loop, so be careful if you change this.
+
+    // The equation of a line is ax + by + c = 0
+    // a and b are the x and y values of the normal of the line.
+    // c is the negative dot product of the point (x, y) and the normal (a, b).
+    // When the point (x, y) is on the line, the equation will yield 0.
+    // When the point (x, y) is to the right or left of the line, the equation will yield a positive or negative value.
+
+    // Set up the coefficient values for each line segment in the triangle.
+    // The right normal of a vector, v (p1.x - p0.x, p1.y - p0.y) is (-vy, vx)
+    // edge0
+    const a0 = triangle_y0 - triangle_y1; // Right Normal x is negative edge vector y
+    const b0 = triangle_x1 - triangle_x0; // Right Normal y is edge vector x
+    const c0 = -a0 * triangle_x0 - b0 * triangle_y0; // The negative dot product of the point and the normal vector
+    // edge1
+    const a1 = triangle_y1 - triangle_y2;
+    const b1 = triangle_x2 - triangle_x1;
+    const c1 = -a1 * triangle_x1 - b1 * triangle_y1;
+    // edge2
+    const a2 = triangle_y2 - triangle_y0;
+    const b2 = triangle_x0 - triangle_x2;
+    const c2 = -a2 * triangle_x2 - b2 * triangle_y2;
+
+    // This algorithm fills any pixel that the triangle overlaps.
+    // A pixel is technically an area, not a point. Points are infinitely small. Pixels have an area of 1x1 or 1.
+    // A pixel has 4 corner points.
+    // Instead of testing the top left corner or the center point, this algorithm tests the point that is farthest along the normal vector.
+    // The normal vector points inside the triangle. Getting the point that is deepest into the triangle will ensure the overlap test is accurate.
+
+    // Get the x and y offsets for each pixel test
+    // Get the corner point of the pixel bounding box that is farthest along the right normal vector to the line edge.
+    const x0 = a0 < 0 ? 0 : 1; // !(a0 >> 31) is a fast alternative, but it will truncate float values and introduce rounding errors.
+    const y0 = b0 < 0 ? 0 : 1; // !(b0 >> 31)
+    const x1 = a1 < 0 ? 0 : 1; // !(a1 >> 31)
+    const y1 = b1 < 0 ? 0 : 1; // !(b1 >> 31)
+    const x2 = a2 < 0 ? 0 : 1; // !(a2 >> 31)
+    const y2 = b2 < 0 ? 0 : 1; // !(b2 >> 31)
+
+    // These are the results of each edge test for the top left corner of the bounding box with deepest point in pixel offsets applied.
+    let v0 = a0 * (box_left + x0) + b0 * (box_top + y0) + c0;
+    let v1 = a1 * (box_left + x1) + b1 * (box_top + y1) + c1;
+    let v2 = a2 * (box_left + x2) + b2 * (box_top + y2) + c2;
+
+    // The y increment to add to the edge test result on each y iteration
+    const yOffset0 = b0 - a0 * box_width;
+    const yOffset1 = b1 - a1 * box_width;
+    const yOffset2 = b2 - a2 * box_width;
+
+    // Set up the first index and row step.
+    let index = box_top * raster_width + box_left;
+    const indexYStep = raster_width - box_width;
+
+    for (let y = box_top; y < box_bottom; y++) {
+
+        for (let x = box_left; x < box_right; x++) {
+            // (v0 | v1 | v2) > 0 Is a faster alternative, but the bitwise operations truncate float values, leading to a rounding error.
+            // I'm choosing to not draw points on the line because only the very edge of the pixel would be on the line.
+            if (v0 > 0 && v1 > 0 && v2 > 0) raster_pixels[index] = color;
+
+            index++;
+
+            // Mutating the floating point test results like this will produce rounding errors and possibly distort long edges.
+            v0 += a0;
+            v1 += a1;
+            v2 += a2;
+        }
+
+        index += indexYStep;
+
+        v0 += yOffset0;
+        v1 += yOffset1;
+        v2 += yOffset2;
+    }
+}
